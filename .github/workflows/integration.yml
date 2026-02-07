@@ -31,9 +31,9 @@ jobs:
           sudo apt-get install -y qemu-system-x86 qemu-utils
           sudo chmod 666 /dev/kvm
 
-      - name: Cache TrueNAS ISO
+      - name: Restore TrueNAS ISO cache
         id: cache-iso
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: /tmp/truenas.iso
           key: truenas-iso-${{ env.TRUENAS_VERSION }}
@@ -43,6 +43,13 @@ jobs:
         run: |
           curl -L -o /tmp/truenas.iso \
             "https://download.truenas.com/TrueNAS-SCALE-Goldeye/${TRUENAS_VERSION}/TrueNAS-SCALE-${TRUENAS_VERSION}.iso"
+
+      - name: Save TrueNAS ISO cache
+        if: steps.cache-iso.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/truenas.iso
+          key: truenas-iso-${{ env.TRUENAS_VERSION }}
 
       - name: Build setup-truenas
         run: go build -o setup-truenas ./cmd/setup-truenas
