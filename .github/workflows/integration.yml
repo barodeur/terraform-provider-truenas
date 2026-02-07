@@ -28,7 +28,7 @@ jobs:
       - name: Install QEMU
         run: |
           sudo apt-get update
-          sudo apt-get install -y qemu-system-x86 qemu-utils zstd
+          sudo apt-get install -y qemu-system-x86 qemu-utils zstd socat
           sudo chmod 666 /dev/kvm
 
       - name: Restore cached disk image
