@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -45,8 +47,8 @@ func (e *rpcError) Error() string {
 	return fmt.Sprintf("JSON-RPC error %d: %s", e.Code, e.Message)
 }
 
-func NewClient(ctx context.Context, host, scheme, apiKey string, insecure bool) (*Client, error) {
-	url := fmt.Sprintf("%s://%s/api/current", scheme, host)
+func NewClient(ctx context.Context, wsURL, apiKey string, insecure bool) (*Client, error) {
+	url := strings.TrimRight(wsURL, "/") + "/api/current"
 
 	tflog.Debug(ctx, "Connecting to TrueNAS WebSocket", map[string]any{"url": url})
 
@@ -68,9 +70,24 @@ func NewClient(ctx context.Context, host, scheme, apiKey string, insecure bool) 
 		nextID: 1,
 	}
 
-	// Authenticate with API key
+	// Authenticate with API key (retry on rate limit)
+	const maxRetries = 5
+	backoff := 5 * time.Second
 	var loginResult bool
-	err = c.Call(ctx, "auth.login_with_api_key", []string{apiKey}, &loginResult)
+	for attempt := range maxRetries {
+		loginResult = false
+		err = c.Call(ctx, "auth.login_with_api_key", []string{apiKey}, &loginResult)
+		if err != nil && strings.Contains(err.Error(), "Rate Limit") && attempt < maxRetries-1 {
+			tflog.Warn(ctx, "Rate limited during authentication, retrying", map[string]any{
+				"attempt": attempt + 1,
+				"backoff": backoff.String(),
+			})
+			time.Sleep(backoff)
+			backoff *= 2
+			continue
+		}
+		break
+	}
 	if err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("authentication failed: %w", err)

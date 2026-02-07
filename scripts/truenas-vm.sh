@@ -1,0 +1,144 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+TRUENAS_VM_DIR="${TRUENAS_VM_DIR:-/tmp/truenas-vm}"
+TRUENAS_VM_MEMORY="${TRUENAS_VM_MEMORY:-4096}"
+TRUENAS_VM_CPUS="${TRUENAS_VM_CPUS:-2}"
+TRUENAS_VM_PORT="${TRUENAS_VM_PORT:-8080}"
+TRUENAS_VM_HTTPS_PORT="${TRUENAS_VM_HTTPS_PORT:-8443}"
+
+DISK="$TRUENAS_VM_DIR/disk.qcow2"
+PIDFILE="$TRUENAS_VM_DIR/qemu.pid"
+SERIAL_LOG="$TRUENAS_VM_DIR/serial.log"
+INSTALLED_MARKER="$TRUENAS_VM_DIR/installed"
+
+cmd_start() {
+    if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+        echo "VM is already running (PID $(cat "$PIDFILE"))"
+        exit 0
+    fi
+
+    mkdir -p "$TRUENAS_VM_DIR"
+
+    FRESH_DISK=false
+    if [ ! -f "$DISK" ]; then
+        if [ -z "${TRUENAS_ISO:-}" ]; then
+            echo "Error: TRUENAS_ISO must be set for first boot (no disk image exists)" >&2
+            exit 1
+        fi
+        echo "Creating 16G disk image..."
+        qemu-img create -f qcow2 "$DISK" 16G
+        FRESH_DISK=true
+        rm -f "$INSTALLED_MARKER"
+    fi
+
+    # Detect KVM availability
+    ACCEL_ARGS=""
+    if [ -w /dev/kvm ]; then
+        ACCEL_ARGS="-machine q35,accel=kvm -cpu host"
+        ACCEL_LABEL="KVM"
+    else
+        ACCEL_ARGS="-machine q35 -cpu max"
+        ACCEL_LABEL="TCG (no KVM — will be slow)"
+    fi
+
+    # Only include ISO/cdrom on first boot (fresh disk)
+    CDROM_ARGS=""
+    if [ "$FRESH_DISK" = true ] && [ -n "${TRUENAS_ISO:-}" ]; then
+        if [ ! -f "$TRUENAS_ISO" ]; then
+            echo "Error: ISO not found at $TRUENAS_ISO" >&2
+            exit 1
+        fi
+        CDROM_ARGS="-boot once=d -cdrom $TRUENAS_ISO"
+        echo "Starting TrueNAS VM (installer boot)..."
+        echo "  ISO:    $TRUENAS_ISO"
+    else
+        echo "Starting TrueNAS VM (disk boot)..."
+    fi
+
+    echo "  Disk:   $DISK"
+    echo "  Memory: ${TRUENAS_VM_MEMORY}MB"
+    echo "  CPUs:   $TRUENAS_VM_CPUS"
+    echo "  Port:   $TRUENAS_VM_PORT -> 80 (HTTP/installer)"
+    echo "  Port:   $TRUENAS_VM_HTTPS_PORT -> 443 (HTTPS/API)"
+    echo "  Accel:  $ACCEL_LABEL"
+
+    # shellcheck disable=SC2086
+    qemu-system-x86_64 \
+        $ACCEL_ARGS \
+        -smp "$TRUENAS_VM_CPUS" \
+        -m "$TRUENAS_VM_MEMORY" \
+        $CDROM_ARGS \
+        -drive "file=$DISK,format=qcow2,if=virtio" \
+        -nic "user,hostfwd=tcp::${TRUENAS_VM_PORT}-:80,hostfwd=tcp::${TRUENAS_VM_HTTPS_PORT}-:443" \
+        -display none \
+        -daemonize \
+        -pidfile "$PIDFILE" \
+        -serial "file:$SERIAL_LOG"
+
+    echo "VM started (PID $(cat "$PIDFILE"))"
+    echo "Serial log: $SERIAL_LOG"
+}
+
+cmd_stop() {
+    if [ ! -f "$PIDFILE" ]; then
+        echo "No PID file found, VM may not be running"
+        exit 0
+    fi
+
+    PID=$(cat "$PIDFILE")
+    if kill -0 "$PID" 2>/dev/null; then
+        echo "Stopping VM (PID $PID)..."
+        kill "$PID"
+        # Wait for process to exit
+        for i in $(seq 1 30); do
+            if ! kill -0 "$PID" 2>/dev/null; then
+                break
+            fi
+            sleep 1
+        done
+        if kill -0 "$PID" 2>/dev/null; then
+            echo "Force killing VM..."
+            kill -9 "$PID" 2>/dev/null || true
+        fi
+        echo "VM stopped"
+    else
+        echo "VM is not running (stale PID file)"
+    fi
+    rm -f "$PIDFILE"
+}
+
+cmd_status() {
+    if [ ! -f "$PIDFILE" ]; then
+        echo "VM is not running (no PID file)"
+        exit 1
+    fi
+
+    PID=$(cat "$PIDFILE")
+    if kill -0 "$PID" 2>/dev/null; then
+        echo "VM is running (PID $PID)"
+        exit 0
+    else
+        echo "VM is not running (stale PID file)"
+        rm -f "$PIDFILE"
+        exit 1
+    fi
+}
+
+case "${1:-}" in
+    start)  cmd_start ;;
+    stop)   cmd_stop ;;
+    status) cmd_status ;;
+    *)
+        echo "Usage: $0 {start|stop|status}" >&2
+        echo "" >&2
+        echo "Environment variables:" >&2
+        echo "  TRUENAS_ISO           Path to TrueNAS ISO (required for first boot)" >&2
+        echo "  TRUENAS_VM_DIR        VM working directory (default: /tmp/truenas-vm)" >&2
+        echo "  TRUENAS_VM_MEMORY     VM memory in MB (default: 4096)" >&2
+        echo "  TRUENAS_VM_CPUS       VM CPUs (default: 2)" >&2
+        echo "  TRUENAS_VM_PORT       Host port forwarded to VM port 80 (default: 8080)" >&2
+        echo "  TRUENAS_VM_HTTPS_PORT Host port forwarded to VM port 443 (default: 8443)" >&2
+        exit 1
+        ;;
+esac

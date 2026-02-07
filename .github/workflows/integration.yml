@@ -1,0 +1,77 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      truenas_version:
+        description: "TrueNAS Scale version"
+        default: "25.10.1"
+        type: string
+
+env:
+  TRUENAS_VERSION: ${{ inputs.truenas_version || '25.10.1' }}
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install QEMU
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 qemu-utils
+          sudo chmod 666 /dev/kvm
+
+      - name: Cache TrueNAS ISO
+        id: cache-iso
+        uses: actions/cache@v4
+        with:
+          path: /tmp/truenas.iso
+          key: truenas-iso-${{ env.TRUENAS_VERSION }}
+
+      - name: Download TrueNAS ISO
+        if: steps.cache-iso.outputs.cache-hit != 'true'
+        run: |
+          curl -L -o /tmp/truenas.iso \
+            "https://download.truenas.com/TrueNAS-SCALE-Goldeye/${TRUENAS_VERSION}/TrueNAS-SCALE-${TRUENAS_VERSION}.iso"
+
+      - name: Build setup-truenas
+        run: go build -o setup-truenas ./cmd/setup-truenas
+
+      - name: Start TrueNAS VM
+        run: TRUENAS_ISO=/tmp/truenas.iso scripts/truenas-vm.sh start
+
+      - name: Install & bootstrap TrueNAS
+        timeout-minutes: 25
+        run: |
+          ./setup-truenas \
+            -host 127.0.0.1 \
+            -port 8080 \
+            -https-port 8443 \
+            -admin-password testing123 \
+            -output-file /tmp/truenas-api-key
+
+      - name: Run acceptance tests
+        run: |
+          export TRUENAS_API_KEY="$(cat /tmp/truenas-api-key)"
+          go test ./internal/provider/ -v -timeout 10m
+        env:
+          TF_ACC: "1"
+          TRUENAS_HOST: "wss://127.0.0.1:8443"
+
+      - name: Dump serial log
+        if: always()
+        run: tail -100 /tmp/truenas-vm/serial.log || true
+
+      - name: Stop VM
+        if: always()
+        run: scripts/truenas-vm.sh stop || true

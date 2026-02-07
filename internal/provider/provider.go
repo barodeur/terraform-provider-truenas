@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"os"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
@@ -15,12 +16,16 @@ import (
 
 var _ provider.Provider = (*truenasProvider)(nil)
 
-type truenasProvider struct{}
+type truenasProvider struct {
+	cachedClient *client.Client
+	cachedHost   string
+	cachedAPIKey string
+	cachedInsec  bool
+}
 
 type truenasProviderModel struct {
 	Host     types.String `tfsdk:"host"`
 	APIKey   types.String `tfsdk:"api_key"`
-	Scheme   types.String `tfsdk:"scheme"`
 	Insecure types.Bool   `tfsdk:"insecure"`
 }
 
@@ -39,17 +44,13 @@ func (p *truenasProvider) Schema(_ context.Context, _ provider.SchemaRequest, re
 		Description: "Interact with TrueNAS Scale via its WebSocket API.",
 		Attributes: map[string]schema.Attribute{
 			"host": schema.StringAttribute{
-				Description: "The hostname or IP address (with optional port) of the TrueNAS server. Can also be set with the TRUENAS_HOST environment variable.",
+				Description: "The WebSocket URL of the TrueNAS server (e.g. wss://truenas.local). If no scheme is provided, wss:// is assumed. Can also be set with the TRUENAS_HOST environment variable.",
 				Required:    true,
 			},
 			"api_key": schema.StringAttribute{
 				Description: "The API key for authenticating with TrueNAS. Can also be set with the TRUENAS_API_KEY environment variable.",
 				Required:    true,
 				Sensitive:   true,
-			},
-			"scheme": schema.StringAttribute{
-				Description: "The WebSocket scheme to use (wss or ws). Defaults to wss. Can also be set with the TRUENAS_SCHEME environment variable.",
-				Optional:    true,
 			},
 			"insecure": schema.BoolAttribute{
 				Description: "Skip TLS certificate verification. Defaults to false.",
@@ -68,16 +69,12 @@ func (p *truenasProvider) Configure(ctx context.Context, req provider.ConfigureR
 
 	host := os.Getenv("TRUENAS_HOST")
 	apiKey := os.Getenv("TRUENAS_API_KEY")
-	scheme := os.Getenv("TRUENAS_SCHEME")
 
 	if !config.Host.IsNull() {
 		host = config.Host.ValueString()
 	}
 	if !config.APIKey.IsNull() {
 		apiKey = config.APIKey.ValueString()
-	}
-	if !config.Scheme.IsNull() {
-		scheme = config.Scheme.ValueString()
 	}
 
 	if host == "" {
@@ -98,8 +95,9 @@ func (p *truenasProvider) Configure(ctx context.Context, req provider.ConfigureR
 		return
 	}
 
-	if scheme == "" {
-		scheme = "wss"
+	// Default to wss:// if no scheme is provided
+	if !strings.HasPrefix(host, "ws://") && !strings.HasPrefix(host, "wss://") {
+		host = "wss://" + host
 	}
 
 	insecure := false
@@ -107,7 +105,17 @@ func (p *truenasProvider) Configure(ctx context.Context, req provider.ConfigureR
 		insecure = config.Insecure.ValueBool()
 	}
 
-	c, err := client.NewClient(ctx, host, scheme, apiKey, insecure)
+	// Reuse existing client if config hasn't changed
+	if p.cachedClient != nil &&
+		p.cachedHost == host &&
+		p.cachedAPIKey == apiKey &&
+		p.cachedInsec == insecure {
+		resp.DataSourceData = p.cachedClient
+		resp.ResourceData = p.cachedClient
+		return
+	}
+
+	c, err := client.NewClient(ctx, host, apiKey, insecure)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Create TrueNAS Client",
@@ -115,6 +123,11 @@ func (p *truenasProvider) Configure(ctx context.Context, req provider.ConfigureR
 		)
 		return
 	}
+
+	p.cachedClient = c
+	p.cachedHost = host
+	p.cachedAPIKey = apiKey
+	p.cachedInsec = insecure
 
 	resp.DataSourceData = c
 	resp.ResourceData = c

@@ -27,7 +27,7 @@ go vet ./...        # Vet all packages
 ### Key design notes
 
 - The `api_key.key` attribute is write-only from TrueNAS's perspective: only returned on `api_key.create`. On Read/Update, the key is preserved from prior Terraform state. After import, `key` is null.
-- Provider config supports env var fallbacks: `TRUENAS_HOST`, `TRUENAS_API_KEY`, `TRUENAS_SCHEME`.
+- Provider config supports env var fallbacks: `TRUENAS_HOST` (full WebSocket URL, e.g. `wss://truenas.local`), `TRUENAS_API_KEY`.
 - The `insecure` provider attribute skips TLS verification for self-signed certs.
 
 ## Adding a new resource

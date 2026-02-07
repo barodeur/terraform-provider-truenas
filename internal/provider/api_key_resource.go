@@ -2,8 +2,10 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -15,6 +17,38 @@ import (
 
 	"github.com/barodeur/terraform-provider-truenas/internal/client"
 )
+
+// truenasDate handles TrueNAS date fields that may be either a plain string
+// or an object like {"$date": <epoch_milliseconds>}.
+type truenasDate struct {
+	Value string
+}
+
+func (d *truenasDate) UnmarshalJSON(data []byte) error {
+	// Try plain string first
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		d.Value = s
+		return nil
+	}
+
+	// Try {"$date": <epoch_ms>} object
+	var obj struct {
+		Date int64 `json:"$date"`
+	}
+	if err := json.Unmarshal(data, &obj); err == nil && obj.Date != 0 {
+		d.Value = time.UnixMilli(obj.Date).UTC().Format(time.RFC3339)
+		return nil
+	}
+
+	// Try null
+	if string(data) == "null" {
+		d.Value = ""
+		return nil
+	}
+
+	return fmt.Errorf("unexpected date format: %s", string(data))
+}
 
 var (
 	_ resource.Resource                = (*apiKeyResource)(nil)
@@ -48,13 +82,13 @@ type apiKeyUpdateParams struct {
 }
 
 type apiKeyResult struct {
-	ID        int64  `json:"id"`
-	Name      string `json:"name"`
-	Username  string `json:"username"`
-	Key       string `json:"key,omitempty"`
-	ExpiresAt string `json:"expires_at,omitempty"`
-	CreatedAt string `json:"created_at"`
-	Revoked   bool   `json:"revoked"`
+	ID        int64       `json:"id"`
+	Name      string      `json:"name"`
+	Username  string      `json:"username"`
+	Key       string      `json:"key,omitempty"`
+	ExpiresAt truenasDate `json:"expires_at"`
+	CreatedAt truenasDate `json:"created_at"`
+	Revoked   bool        `json:"revoked"`
 }
 
 func NewAPIKeyResource() resource.Resource {
@@ -142,11 +176,22 @@ func (r *apiKeyResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
-	params := apiKeyCreateParams{
-		Name: plan.Name.ValueString(),
+	username := plan.Username.ValueString()
+	if plan.Username.IsNull() || plan.Username.IsUnknown() || username == "" {
+		// TrueNAS 25.10+ requires username; look up the authenticated user
+		var me struct {
+			Username string `json:"pw_name"`
+		}
+		if err := r.client.Call(ctx, "auth.me", nil, &me); err != nil {
+			resp.Diagnostics.AddError("Error Looking Up Authenticated User", err.Error())
+			return
+		}
+		username = me.Username
 	}
-	if !plan.Username.IsNull() && !plan.Username.IsUnknown() {
-		params.Username = plan.Username.ValueString()
+
+	params := apiKeyCreateParams{
+		Name:     plan.Name.ValueString(),
+		Username: username,
 	}
 	if !plan.ExpiresAt.IsNull() {
 		params.ExpiresAt = plan.ExpiresAt.ValueString()
@@ -163,10 +208,10 @@ func (r *apiKeyResource) Create(ctx context.Context, req resource.CreateRequest,
 	plan.Name = types.StringValue(result.Name)
 	plan.Username = types.StringValue(result.Username)
 	plan.Key = types.StringValue(result.Key)
-	plan.CreatedAt = types.StringValue(result.CreatedAt)
+	plan.CreatedAt = types.StringValue(result.CreatedAt.Value)
 	plan.Revoked = types.BoolValue(result.Revoked)
-	if result.ExpiresAt != "" {
-		plan.ExpiresAt = types.StringValue(result.ExpiresAt)
+	if result.ExpiresAt.Value != "" {
+		plan.ExpiresAt = types.StringValue(result.ExpiresAt.Value)
 	} else {
 		plan.ExpiresAt = types.StringNull()
 	}
@@ -203,10 +248,10 @@ func (r *apiKeyResource) Read(ctx context.Context, req resource.ReadRequest, res
 	state.Name = types.StringValue(result.Name)
 	state.Username = types.StringValue(result.Username)
 	state.Key = priorKey
-	state.CreatedAt = types.StringValue(result.CreatedAt)
+	state.CreatedAt = types.StringValue(result.CreatedAt.Value)
 	state.Revoked = types.BoolValue(result.Revoked)
-	if result.ExpiresAt != "" {
-		state.ExpiresAt = types.StringValue(result.ExpiresAt)
+	if result.ExpiresAt.Value != "" {
+		state.ExpiresAt = types.StringValue(result.ExpiresAt.Value)
 	} else {
 		state.ExpiresAt = types.StringNull()
 	}
@@ -246,10 +291,10 @@ func (r *apiKeyResource) Update(ctx context.Context, req resource.UpdateRequest,
 	plan.Name = types.StringValue(result.Name)
 	plan.Username = types.StringValue(result.Username)
 	plan.Key = state.Key
-	plan.CreatedAt = types.StringValue(result.CreatedAt)
+	plan.CreatedAt = types.StringValue(result.CreatedAt.Value)
 	plan.Revoked = types.BoolValue(result.Revoked)
-	if result.ExpiresAt != "" {
-		plan.ExpiresAt = types.StringValue(result.ExpiresAt)
+	if result.ExpiresAt.Value != "" {
+		plan.ExpiresAt = types.StringValue(result.ExpiresAt.Value)
 	} else {
 		plan.ExpiresAt = types.StringNull()
 	}

@@ -132,11 +132,11 @@ func (d *apiKeyDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		ID:        types.Int64Value(result.ID),
 		Name:      types.StringValue(result.Name),
 		Username:  types.StringValue(result.Username),
-		CreatedAt: types.StringValue(result.CreatedAt),
+		CreatedAt: types.StringValue(result.CreatedAt.Value),
 		Revoked:   types.BoolValue(result.Revoked),
 	}
-	if result.ExpiresAt != "" {
-		state.ExpiresAt = types.StringValue(result.ExpiresAt)
+	if result.ExpiresAt.Value != "" {
+		state.ExpiresAt = types.StringValue(result.ExpiresAt.Value)
 	} else {
 		state.ExpiresAt = types.StringNull()
 	}

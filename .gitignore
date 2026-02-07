@@ -1,4 +1,5 @@
 terraform-provider-truenas
+setup-truenas
 *.exe
 dist/
 .terraform/
