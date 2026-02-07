@@ -1,0 +1,8 @@
+terraform-provider-truenas
+*.exe
+dist/
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfplan
+crash.log
