@@ -37,6 +37,7 @@ jobs:
         with:
           path: /tmp/truenas.iso
           key: truenas-iso-${{ env.TRUENAS_VERSION }}
+          save-always: true
 
       - name: Download TrueNAS ISO
         if: steps.cache-iso.outputs.cache-hit != 'true'
