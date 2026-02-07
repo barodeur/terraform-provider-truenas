@@ -28,10 +28,18 @@ jobs:
       - name: Install QEMU
         run: |
           sudo apt-get update
-          sudo apt-get install -y qemu-system-x86 qemu-utils
+          sudo apt-get install -y qemu-system-x86 qemu-utils zstd
           sudo chmod 666 /dev/kvm
 
+      - name: Restore cached disk image
+        id: cache-disk
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/truenas-disk-cache
+          key: truenas-disk-${{ env.TRUENAS_VERSION }}-${{ hashFiles('cmd/setup-truenas/**') }}
+
       - name: Restore TrueNAS ISO cache
+        if: steps.cache-disk.outputs.cache-hit != 'true'
         id: cache-iso
         uses: actions/cache/restore@v4
         with:
@@ -39,25 +47,38 @@ jobs:
           key: truenas-iso-${{ env.TRUENAS_VERSION }}
 
       - name: Download TrueNAS ISO
-        if: steps.cache-iso.outputs.cache-hit != 'true'
+        if: steps.cache-disk.outputs.cache-hit != 'true' && steps.cache-iso.outputs.cache-hit != 'true'
         run: |
           curl -L -o /tmp/truenas.iso \
             "https://download.truenas.com/TrueNAS-SCALE-Goldeye/${TRUENAS_VERSION}/TrueNAS-SCALE-${TRUENAS_VERSION}.iso"
 
       - name: Save TrueNAS ISO cache
-        if: steps.cache-iso.outputs.cache-hit != 'true'
+        if: steps.cache-disk.outputs.cache-hit != 'true' && steps.cache-iso.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: /tmp/truenas.iso
           key: truenas-iso-${{ env.TRUENAS_VERSION }}
 
+      - name: Decompress cached disk
+        if: steps.cache-disk.outputs.cache-hit == 'true'
+        run: |
+          mkdir -p /tmp/truenas-vm
+          zstd -d /tmp/truenas-disk-cache/disk.qcow2.zst -o /tmp/truenas-vm/disk.qcow2
+
       - name: Build setup-truenas
+        if: steps.cache-disk.outputs.cache-hit != 'true'
         run: go build -o setup-truenas ./cmd/setup-truenas
 
       - name: Start TrueNAS VM
-        run: TRUENAS_ISO=/tmp/truenas.iso scripts/truenas-vm.sh start
+        run: |
+          if [ "${{ steps.cache-disk.outputs.cache-hit }}" != "true" ]; then
+            TRUENAS_ISO=/tmp/truenas.iso scripts/truenas-vm.sh start
+          else
+            scripts/truenas-vm.sh start
+          fi
 
       - name: Install & bootstrap TrueNAS
+        if: steps.cache-disk.outputs.cache-hit != 'true'
         timeout-minutes: 25
         run: |
           ./setup-truenas \
@@ -67,9 +88,43 @@ jobs:
             -admin-password testing123 \
             -output-file /tmp/truenas-api-key
 
+      - name: Snapshot disk image for cache
+        if: steps.cache-disk.outputs.cache-hit != 'true'
+        run: |
+          scripts/truenas-vm.sh stop
+          mkdir -p /tmp/truenas-disk-cache
+          zstd -3 -T0 /tmp/truenas-vm/disk.qcow2 -o /tmp/truenas-disk-cache/disk.qcow2.zst
+          cp /tmp/truenas-api-key /tmp/truenas-disk-cache/api-key
+          scripts/truenas-vm.sh start
+
+      - name: Save disk image cache
+        if: steps.cache-disk.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/truenas-disk-cache
+          key: truenas-disk-${{ env.TRUENAS_VERSION }}-${{ hashFiles('cmd/setup-truenas/**') }}
+
+      - name: Wait for TrueNAS API
+        timeout-minutes: 5
+        run: |
+          echo "Waiting for TrueNAS API to be ready..."
+          for i in $(seq 1 60); do
+            if curl -sk -o /dev/null https://127.0.0.1:8443/ 2>/dev/null; then
+              echo "TrueNAS API is ready"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Timed out waiting for TrueNAS API"
+          exit 1
+
       - name: Run acceptance tests
         run: |
-          export TRUENAS_API_KEY="$(cat /tmp/truenas-api-key)"
+          if [ -f /tmp/truenas-disk-cache/api-key ]; then
+            export TRUENAS_API_KEY="$(cat /tmp/truenas-disk-cache/api-key)"
+          else
+            export TRUENAS_API_KEY="$(cat /tmp/truenas-api-key)"
+          fi
           go test ./internal/provider/ -v -timeout 10m
         env:
           TF_ACC: "1"
