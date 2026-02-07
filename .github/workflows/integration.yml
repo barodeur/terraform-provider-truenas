@@ -91,11 +91,13 @@ jobs:
       - name: Snapshot disk image for cache
         if: steps.cache-disk.outputs.cache-hit != 'true'
         run: |
-          scripts/truenas-vm.sh stop
+          # Live-snapshot: freeze disk.qcow2 and redirect writes to an overlay
+          echo "snapshot_blkdev virtio0 /tmp/truenas-vm/overlay.qcow2 qcow2" \
+            | socat - UNIX-CONNECT:/tmp/truenas-vm/monitor.sock
+          # disk.qcow2 is now read-only — compress it while VM keeps running
           mkdir -p /tmp/truenas-disk-cache
           zstd -3 -T0 /tmp/truenas-vm/disk.qcow2 -o /tmp/truenas-disk-cache/disk.qcow2.zst
           cp /tmp/truenas-api-key /tmp/truenas-disk-cache/api-key
-          scripts/truenas-vm.sh start
 
       - name: Save disk image cache
         if: steps.cache-disk.outputs.cache-hit != 'true'
@@ -105,6 +107,7 @@ jobs:
           key: truenas-disk-${{ env.TRUENAS_VERSION }}-${{ hashFiles('cmd/setup-truenas/**') }}
 
       - name: Wait for TrueNAS API
+        if: steps.cache-disk.outputs.cache-hit == 'true'
         timeout-minutes: 5
         run: |
           echo "Waiting for TrueNAS API to be ready..."
