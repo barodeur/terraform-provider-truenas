@@ -9,6 +9,7 @@ TRUENAS_VM_HTTPS_PORT="${TRUENAS_VM_HTTPS_PORT:-8443}"
 
 DISK="$TRUENAS_VM_DIR/disk.qcow2"
 PIDFILE="$TRUENAS_VM_DIR/qemu.pid"
+MONITOR_SOCK="$TRUENAS_VM_DIR/monitor.sock"
 SERIAL_LOG="$TRUENAS_VM_DIR/serial.log"
 INSTALLED_MARKER="$TRUENAS_VM_DIR/installed"
 
@@ -74,7 +75,8 @@ cmd_start() {
         -display none \
         -daemonize \
         -pidfile "$PIDFILE" \
-        -serial "file:$SERIAL_LOG"
+        -serial "file:$SERIAL_LOG" \
+        -monitor "unix:$MONITOR_SOCK,server,nowait"
 
     echo "VM started (PID $(cat "$PIDFILE"))"
     echo "Serial log: $SERIAL_LOG"
@@ -89,9 +91,18 @@ cmd_stop() {
     PID=$(cat "$PIDFILE")
     if kill -0 "$PID" 2>/dev/null; then
         echo "Stopping VM (PID $PID)..."
-        kill "$PID"
+
+        # Send ACPI powerdown via monitor socket for graceful guest shutdown
+        if [ -S "$MONITOR_SOCK" ]; then
+            echo "Sending ACPI powerdown..."
+            echo "system_powerdown" | socat - UNIX-CONNECT:"$MONITOR_SOCK" || true
+        else
+            echo "No monitor socket, sending SIGTERM..."
+            kill "$PID"
+        fi
+
         # Wait for process to exit
-        for i in $(seq 1 30); do
+        for i in $(seq 1 120); do
             if ! kill -0 "$PID" 2>/dev/null; then
                 break
             fi
