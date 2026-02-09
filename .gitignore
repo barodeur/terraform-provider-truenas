@@ -7,3 +7,4 @@ dist/
 *.tfstate.backup
 *.tfplan
 crash.log
+.direnv/
