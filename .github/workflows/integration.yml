@@ -92,14 +92,18 @@ jobs:
       - name: Snapshot VM for cache
         if: steps.cache-vm.outputs.cache-hit != 'true'
         run: |
-          # Save full VM state (memory + devices) into disk images
-          echo "savevm ready" | socat - UNIX-CONNECT:/tmp/truenas-vm/monitor.sock
-          sleep 10
-          # Redirect writes to overlays so original images become read-only
-          echo "snapshot_blkdev boot0 /tmp/truenas-vm/overlay-boot.qcow2 qcow2" \
-            | socat - UNIX-CONNECT:/tmp/truenas-vm/monitor.sock
-          echo "snapshot_blkdev data0 /tmp/truenas-vm/overlay-data.qcow2 qcow2" \
-            | socat - UNIX-CONNECT:/tmp/truenas-vm/monitor.sock
+          MONITOR=/tmp/truenas-vm/monitor.sock
+          # Stop VM so savevm completes instantly on frozen memory,
+          # then redirect writes to overlays so originals become read-only.
+          # All commands in one session to ensure sequential execution.
+          printf '%s\n' \
+            "stop" \
+            "savevm ready" \
+            "snapshot_blkdev boot0 /tmp/truenas-vm/overlay-boot.qcow2 qcow2" \
+            "snapshot_blkdev data0 /tmp/truenas-vm/overlay-data.qcow2 qcow2" \
+            "cont" \
+            | socat - UNIX-CONNECT:"$MONITOR"
+          sleep 5
           # Compress both images while VM keeps running on overlays
           mkdir -p /tmp/truenas-disk-cache
           zstd -3 -T0 /tmp/truenas-vm/disk.qcow2 -o /tmp/truenas-disk-cache/disk.qcow2.zst
