@@ -162,23 +162,6 @@ func (c *Client) Call(ctx context.Context, method string, params any, dest any) 
 	}
 }
 
-// CallJob calls a method that returns a job ID and waits for the job to complete.
-// The job result is unmarshaled into dest. It uses core.job_wait which blocks
-// until the job finishes and returns the result directly.
-func (c *Client) CallJob(ctx context.Context, method string, params any, dest any) error {
-	var jobID int64
-	if err := c.Call(ctx, method, params, &jobID); err != nil {
-		return err
-	}
-
-	tflog.Debug(ctx, "Waiting for job to complete", map[string]any{
-		"method": method,
-		"job_id": jobID,
-	})
-
-	return c.Call(ctx, "core.job_wait", []any{jobID}, dest)
-}
-
 func (c *Client) Close() error {
 	return c.conn.Close()
 }
