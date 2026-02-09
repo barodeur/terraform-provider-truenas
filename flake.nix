@@ -25,6 +25,7 @@
 
             # QEMU (for VM-based acceptance tests)
             qemu
+            socat
 
           ];
 
