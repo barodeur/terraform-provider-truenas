@@ -131,6 +131,41 @@ cmd_stop() {
     rm -f "$PIDFILE"
 }
 
+cmd_wait_api() {
+    local timeout="${TRUENAS_VM_WAIT_TIMEOUT:-300}"
+    local url="https://127.0.0.1:${TRUENAS_VM_HTTPS_PORT}"
+
+    echo "Waiting for TrueNAS API at ${url}..."
+    local deadline=$((SECONDS + timeout))
+    while [ "$SECONDS" -lt "$deadline" ]; do
+        if curl -sk -o /dev/null "$url" 2>/dev/null; then
+            echo "TrueNAS API is ready"
+            return 0
+        fi
+        sleep 5
+    done
+    echo "Timed out waiting for TrueNAS API after ${timeout}s"
+    return 1
+}
+
+cmd_clean() {
+    # Stop the VM first if it's running
+    if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+        echo "VM is running, stopping it first..."
+        cmd_stop
+    fi
+
+    echo "Removing VM state directory: $TRUENAS_VM_DIR"
+    rm -rf "$TRUENAS_VM_DIR"
+
+    if [ -f /tmp/truenas-api-key ]; then
+        echo "Removing /tmp/truenas-api-key"
+        rm -f /tmp/truenas-api-key
+    fi
+
+    echo "Clean complete"
+}
+
 cmd_status() {
     if [ ! -f "$PIDFILE" ]; then
         echo "VM is not running (no PID file)"
@@ -149,20 +184,23 @@ cmd_status() {
 }
 
 case "${1:-}" in
-    start)  cmd_start ;;
-    stop)   cmd_stop ;;
-    status) cmd_status ;;
+    start)    cmd_start ;;
+    stop)     cmd_stop ;;
+    clean)    cmd_clean ;;
+    status)   cmd_status ;;
+    wait-api) cmd_wait_api ;;
     *)
-        echo "Usage: $0 {start|stop|status}" >&2
+        echo "Usage: $0 {start|stop|clean|status|wait-api}" >&2
         echo "" >&2
         echo "Environment variables:" >&2
-        echo "  TRUENAS_ISO           Path to TrueNAS ISO (required for first boot)" >&2
-        echo "  TRUENAS_VM_DIR        VM working directory (default: /tmp/truenas-vm)" >&2
-        echo "  TRUENAS_VM_MEMORY     VM memory in MB (default: 4096)" >&2
-        echo "  TRUENAS_VM_CPUS       VM CPUs (default: 2)" >&2
+        echo "  TRUENAS_ISO              Path to TrueNAS ISO (required for first boot)" >&2
+        echo "  TRUENAS_VM_DIR           VM working directory (default: /tmp/truenas-vm)" >&2
+        echo "  TRUENAS_VM_MEMORY        VM memory in MB (default: 4096)" >&2
+        echo "  TRUENAS_VM_CPUS          VM CPUs (default: 2)" >&2
         echo "  TRUENAS_VM_DATA_DISK_SIZE Size of the data disk (default: 8G)" >&2
-        echo "  TRUENAS_VM_PORT       Host port forwarded to VM port 80 (default: 8080)" >&2
-        echo "  TRUENAS_VM_HTTPS_PORT Host port forwarded to VM port 443 (default: 8443)" >&2
+        echo "  TRUENAS_VM_PORT          Host port forwarded to VM port 80 (default: 8080)" >&2
+        echo "  TRUENAS_VM_HTTPS_PORT    Host port forwarded to VM port 443 (default: 8443)" >&2
+        echo "  TRUENAS_VM_WAIT_TIMEOUT  Timeout in seconds for wait-api (default: 300)" >&2
         exit 1
         ;;
 esac

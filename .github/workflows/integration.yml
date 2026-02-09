@@ -88,25 +88,6 @@ jobs:
             -admin-password testing123 \
             -output-file /tmp/truenas-api-key
 
-      - name: Create pool
-        if: steps.cache-disk.outputs.cache-hit != 'true'
-        run: |
-          API_KEY="$(cat /tmp/truenas-api-key)"
-          curl -sk -X POST https://127.0.0.1:8443/api/v2.0/pool \
-            -H "Authorization: Bearer $API_KEY" \
-            -H "Content-Type: application/json" \
-            -d '{"name":"tank","topology":{"data":[{"type":"STRIPE","disks":["vdb"]}]}}'
-          echo "Waiting for pool to come online..."
-          for i in $(seq 1 30); do
-            STATUS=$(curl -sk https://127.0.0.1:8443/api/v2.0/pool \
-              -H "Authorization: Bearer $API_KEY" | python3 -c "import json,sys; pools=json.load(sys.stdin); print(pools[0]['status'] if pools else 'NONE')" 2>/dev/null)
-            if [ "$STATUS" = "ONLINE" ]; then
-              echo "Pool is ONLINE"
-              break
-            fi
-            sleep 2
-          done
-
       - name: Snapshot disk image for cache
         if: steps.cache-disk.outputs.cache-hit != 'true'
         run: |
@@ -128,17 +109,7 @@ jobs:
       - name: Wait for TrueNAS API
         if: steps.cache-disk.outputs.cache-hit == 'true'
         timeout-minutes: 5
-        run: |
-          echo "Waiting for TrueNAS API to be ready..."
-          for i in $(seq 1 60); do
-            if curl -sk -o /dev/null https://127.0.0.1:8443/ 2>/dev/null; then
-              echo "TrueNAS API is ready"
-              exit 0
-            fi
-            sleep 5
-          done
-          echo "Timed out waiting for TrueNAS API"
-          exit 1
+        run: scripts/truenas-vm.sh wait-api
 
       - name: Run acceptance tests
         run: |
