@@ -8,3 +8,4 @@ dist/
 *.tfplan
 crash.log
 .direnv/
+.claude/settings.local.json
