@@ -65,6 +65,13 @@ cmd_start() {
         echo "Starting TrueNAS VM (disk boot)..."
     fi
 
+    # Resume from a saved VM snapshot (memory + device state)
+    LOADVM_ARGS=""
+    if [ -n "${TRUENAS_VM_LOADVM:-}" ]; then
+        LOADVM_ARGS="-loadvm $TRUENAS_VM_LOADVM"
+        echo "  Restore: snapshot '$TRUENAS_VM_LOADVM'"
+    fi
+
     echo "  Boot:   $DISK"
     echo "  Data:   $DATA_DISK"
     echo "  Memory: ${TRUENAS_VM_MEMORY}MB"
@@ -79,6 +86,7 @@ cmd_start() {
         -smp "$TRUENAS_VM_CPUS" \
         -m "$TRUENAS_VM_MEMORY" \
         $CDROM_ARGS \
+        $LOADVM_ARGS \
         -drive "file=$DISK,format=qcow2,if=none,id=boot0" \
         -device "virtio-blk-pci,drive=boot0,serial=TRUENAS-BOOT-001" \
         -drive "file=$DATA_DISK,format=qcow2,if=none,id=data0" \

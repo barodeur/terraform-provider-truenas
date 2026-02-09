@@ -287,7 +287,7 @@ func main() {
 		log.Fatalf("disk.query failed: %v", err)
 	}
 
-	// Get the boot disk(s) to exclude them — API returns a list of disk name strings
+	// Get the boot disk(s) to exclude them
 	var bootDiskNames []string
 	if err := call(apiConn, "boot.get_disks", nil, &bootDiskNames); err != nil {
 		log.Fatalf("boot.get_disks failed: %v", err)
@@ -299,7 +299,6 @@ func main() {
 	}
 	log.Printf("Boot disks: %v", bootDiskNames)
 
-	// Find available (non-boot) disks
 	var poolDisks []string
 	for _, d := range apiDisks {
 		name, ok := d["name"].(string)
@@ -319,7 +318,6 @@ func main() {
 
 	log.Printf("Available disks for pool: %v", poolDisks)
 
-	// Build the topology: single stripe vdev with all available disks
 	topology := map[string]any{
 		"data": []map[string]any{
 			{
@@ -334,21 +332,17 @@ func main() {
 		"topology": topology,
 	}
 
-	// pool.create returns a job ID
 	var jobID int64
 	if err := call(apiConn, "pool.create", []any{poolParams}, &jobID); err != nil {
 		log.Fatalf("pool.create failed: %v", err)
 	}
 	log.Printf("Pool creation job started (id=%d), waiting...", jobID)
 
-	// Close the current connection — the pool.create job sends async notifications
-	// that interfere with subsequent calls on the same WebSocket.
+	// pool.create sends async notifications that interfere with subsequent calls,
+	// so disconnect, wait, and reconnect to poll for pool readiness.
 	apiConn.Close()
-
-	// Wait a moment for the job to make progress, then reconnect
 	time.Sleep(5 * time.Second)
 
-	// Reconnect and poll for pool existence
 	apiURL2 := fmt.Sprintf("wss://%s:%d/api/current", *host, *httpsPort)
 	apiConn2, err := waitForWebSocket(apiURL2, wssDialer, 2*time.Minute)
 	if err != nil {
@@ -356,7 +350,6 @@ func main() {
 	}
 	defer apiConn2.Close()
 
-	// Re-authenticate
 	var loginResult2 bool
 	if err := call(apiConn2, "auth.login", []any{"truenas_admin", *adminPassword}, &loginResult2); err != nil {
 		log.Fatalf("auth.login on reconnect failed: %v", err)

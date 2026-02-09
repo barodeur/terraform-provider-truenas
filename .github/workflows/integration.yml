@@ -31,15 +31,15 @@ jobs:
           sudo apt-get install -y qemu-system-x86 qemu-utils zstd socat
           sudo chmod 666 /dev/kvm
 
-      - name: Restore cached disk image
-        id: cache-disk
+      - name: Restore cached VM image
+        id: cache-vm
         uses: actions/cache/restore@v4
         with:
           path: /tmp/truenas-disk-cache
-          key: truenas-disk-${{ env.TRUENAS_VERSION }}-${{ hashFiles('cmd/setup-truenas/**', 'scripts/truenas-vm.sh') }}
+          key: truenas-vm-${{ env.TRUENAS_VERSION }}-${{ hashFiles('cmd/setup-truenas/**', 'scripts/truenas-vm.sh') }}
 
       - name: Restore TrueNAS ISO cache
-        if: steps.cache-disk.outputs.cache-hit != 'true'
+        if: steps.cache-vm.outputs.cache-hit != 'true'
         id: cache-iso
         uses: actions/cache/restore@v4
         with:
@@ -47,38 +47,39 @@ jobs:
           key: truenas-iso-${{ env.TRUENAS_VERSION }}
 
       - name: Download TrueNAS ISO
-        if: steps.cache-disk.outputs.cache-hit != 'true' && steps.cache-iso.outputs.cache-hit != 'true'
+        if: steps.cache-vm.outputs.cache-hit != 'true' && steps.cache-iso.outputs.cache-hit != 'true'
         run: |
           curl -L -o /tmp/truenas.iso \
             "https://download.truenas.com/TrueNAS-SCALE-Goldeye/${TRUENAS_VERSION}/TrueNAS-SCALE-${TRUENAS_VERSION}.iso"
 
       - name: Save TrueNAS ISO cache
-        if: steps.cache-disk.outputs.cache-hit != 'true' && steps.cache-iso.outputs.cache-hit != 'true'
+        if: steps.cache-vm.outputs.cache-hit != 'true' && steps.cache-iso.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: /tmp/truenas.iso
           key: truenas-iso-${{ env.TRUENAS_VERSION }}
 
-      - name: Decompress cached disk
-        if: steps.cache-disk.outputs.cache-hit == 'true'
+      - name: Decompress cached VM
+        if: steps.cache-vm.outputs.cache-hit == 'true'
         run: |
           mkdir -p /tmp/truenas-vm
           zstd -d /tmp/truenas-disk-cache/disk.qcow2.zst -o /tmp/truenas-vm/disk.qcow2
+          zstd -d /tmp/truenas-disk-cache/data-disk.qcow2.zst -o /tmp/truenas-vm/data-disk.qcow2
 
       - name: Build setup-truenas
-        if: steps.cache-disk.outputs.cache-hit != 'true'
+        if: steps.cache-vm.outputs.cache-hit != 'true'
         run: go build -o setup-truenas ./cmd/setup-truenas
 
       - name: Start TrueNAS VM
         run: |
-          if [ "${{ steps.cache-disk.outputs.cache-hit }}" != "true" ]; then
+          if [ "${{ steps.cache-vm.outputs.cache-hit }}" != "true" ]; then
             TRUENAS_ISO=/tmp/truenas.iso scripts/truenas-vm.sh start
           else
-            scripts/truenas-vm.sh start
+            TRUENAS_VM_LOADVM=ready scripts/truenas-vm.sh start
           fi
 
       - name: Install & bootstrap TrueNAS
-        if: steps.cache-disk.outputs.cache-hit != 'true'
+        if: steps.cache-vm.outputs.cache-hit != 'true'
         timeout-minutes: 25
         run: |
           ./setup-truenas \
@@ -88,26 +89,31 @@ jobs:
             -admin-password testing123 \
             -output-file /tmp/truenas-api-key
 
-      - name: Snapshot disk image for cache
-        if: steps.cache-disk.outputs.cache-hit != 'true'
+      - name: Snapshot VM for cache
+        if: steps.cache-vm.outputs.cache-hit != 'true'
         run: |
-          # Live-snapshot: freeze disk.qcow2 and redirect writes to an overlay
-          echo "snapshot_blkdev boot0 /tmp/truenas-vm/overlay.qcow2 qcow2" \
+          # Save full VM state (memory + devices) into disk images
+          echo "savevm ready" | socat - UNIX-CONNECT:/tmp/truenas-vm/monitor.sock
+          sleep 10
+          # Redirect writes to overlays so original images become read-only
+          echo "snapshot_blkdev boot0 /tmp/truenas-vm/overlay-boot.qcow2 qcow2" \
             | socat - UNIX-CONNECT:/tmp/truenas-vm/monitor.sock
-          # disk.qcow2 is now read-only — compress it while VM keeps running
+          echo "snapshot_blkdev data0 /tmp/truenas-vm/overlay-data.qcow2 qcow2" \
+            | socat - UNIX-CONNECT:/tmp/truenas-vm/monitor.sock
+          # Compress both images while VM keeps running on overlays
           mkdir -p /tmp/truenas-disk-cache
           zstd -3 -T0 /tmp/truenas-vm/disk.qcow2 -o /tmp/truenas-disk-cache/disk.qcow2.zst
+          zstd -3 -T0 /tmp/truenas-vm/data-disk.qcow2 -o /tmp/truenas-disk-cache/data-disk.qcow2.zst
           cp /tmp/truenas-api-key /tmp/truenas-disk-cache/api-key
 
-      - name: Save disk image cache
-        if: steps.cache-disk.outputs.cache-hit != 'true'
+      - name: Save VM cache
+        if: steps.cache-vm.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: /tmp/truenas-disk-cache
-          key: truenas-disk-${{ env.TRUENAS_VERSION }}-${{ hashFiles('cmd/setup-truenas/**', 'scripts/truenas-vm.sh') }}
+          key: truenas-vm-${{ env.TRUENAS_VERSION }}-${{ hashFiles('cmd/setup-truenas/**', 'scripts/truenas-vm.sh') }}
 
       - name: Wait for TrueNAS API
-        if: steps.cache-disk.outputs.cache-hit == 'true'
         timeout-minutes: 5
         run: scripts/truenas-vm.sh wait-api
 
