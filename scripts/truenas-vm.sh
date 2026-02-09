@@ -7,7 +7,10 @@ TRUENAS_VM_CPUS="${TRUENAS_VM_CPUS:-2}"
 TRUENAS_VM_PORT="${TRUENAS_VM_PORT:-8080}"
 TRUENAS_VM_HTTPS_PORT="${TRUENAS_VM_HTTPS_PORT:-8443}"
 
+TRUENAS_VM_DATA_DISK_SIZE="${TRUENAS_VM_DATA_DISK_SIZE:-8G}"
+
 DISK="$TRUENAS_VM_DIR/disk.qcow2"
+DATA_DISK="$TRUENAS_VM_DIR/data-disk.qcow2"
 PIDFILE="$TRUENAS_VM_DIR/qemu.pid"
 SERIAL_LOG="$TRUENAS_VM_DIR/serial.log"
 INSTALLED_MARKER="$TRUENAS_VM_DIR/installed"
@@ -26,10 +29,15 @@ cmd_start() {
             echo "Error: TRUENAS_ISO must be set for first boot (no disk image exists)" >&2
             exit 1
         fi
-        echo "Creating 16G disk image..."
+        echo "Creating 16G boot disk image..."
         qemu-img create -f qcow2 "$DISK" 16G
         FRESH_DISK=true
         rm -f "$INSTALLED_MARKER"
+    fi
+
+    if [ ! -f "$DATA_DISK" ]; then
+        echo "Creating ${TRUENAS_VM_DATA_DISK_SIZE} data disk image..."
+        qemu-img create -f qcow2 "$DATA_DISK" "$TRUENAS_VM_DATA_DISK_SIZE"
     fi
 
     # Detect KVM availability
@@ -56,7 +64,8 @@ cmd_start() {
         echo "Starting TrueNAS VM (disk boot)..."
     fi
 
-    echo "  Disk:   $DISK"
+    echo "  Boot:   $DISK"
+    echo "  Data:   $DATA_DISK"
     echo "  Memory: ${TRUENAS_VM_MEMORY}MB"
     echo "  CPUs:   $TRUENAS_VM_CPUS"
     echo "  Port:   $TRUENAS_VM_PORT -> 80 (HTTP/installer)"
@@ -69,7 +78,10 @@ cmd_start() {
         -smp "$TRUENAS_VM_CPUS" \
         -m "$TRUENAS_VM_MEMORY" \
         $CDROM_ARGS \
-        -drive "file=$DISK,format=qcow2,if=virtio" \
+        -drive "file=$DISK,format=qcow2,if=none,id=boot0" \
+        -device "virtio-blk-pci,drive=boot0,serial=TRUENAS-BOOT-001" \
+        -drive "file=$DATA_DISK,format=qcow2,if=none,id=data0" \
+        -device "virtio-blk-pci,drive=data0,serial=TRUENAS-DATA-001" \
         -nic "user,hostfwd=tcp::${TRUENAS_VM_PORT}-:80,hostfwd=tcp::${TRUENAS_VM_HTTPS_PORT}-:443" \
         -display none \
         -daemonize \
@@ -137,6 +149,7 @@ case "${1:-}" in
         echo "  TRUENAS_VM_DIR        VM working directory (default: /tmp/truenas-vm)" >&2
         echo "  TRUENAS_VM_MEMORY     VM memory in MB (default: 4096)" >&2
         echo "  TRUENAS_VM_CPUS       VM CPUs (default: 2)" >&2
+        echo "  TRUENAS_VM_DATA_DISK_SIZE Size of the data disk (default: 8G)" >&2
         echo "  TRUENAS_VM_PORT       Host port forwarded to VM port 80 (default: 8080)" >&2
         echo "  TRUENAS_VM_HTTPS_PORT Host port forwarded to VM port 443 (default: 8443)" >&2
         exit 1

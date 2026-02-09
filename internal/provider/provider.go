@@ -136,11 +136,17 @@ func (p *truenasProvider) Configure(ctx context.Context, req provider.ConfigureR
 func (p *truenasProvider) Resources(_ context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		NewAPIKeyResource,
+		NewPoolDatasetResource,
+		NewGroupResource,
+		NewUserResource,
+		NewSMBShareResource,
+		NewNFSShareResource,
 	}
 }
 
 func (p *truenasProvider) DataSources(_ context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
 		NewAPIKeyDataSource,
+		NewPoolDataSource,
 	}
 }

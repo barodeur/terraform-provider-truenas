@@ -67,6 +67,7 @@ jobs:
         env:
           TF_ACC: "1"
           TRUENAS_HOST: "wss://127.0.0.1:8443"
+          TRUENAS_POOL: "tank"
 
       - name: Dump serial log
         if: always()
