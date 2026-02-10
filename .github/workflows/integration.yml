@@ -112,7 +112,7 @@ jobs:
           while ! grep -q "VM status" /tmp/truenas-vm/snapshot.log 2>/dev/null; do
             sleep 2
           done
-          kill $SOCAT_PID 2>/dev/null; wait $SOCAT_PID 2>/dev/null || true
+          kill $SOCAT_PID 2>/dev/null || true
           echo "VM snapshot complete"
           # Compress both images while VM keeps running on overlays
           mkdir -p /tmp/truenas-disk-cache
