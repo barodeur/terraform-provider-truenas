@@ -31,15 +31,15 @@ jobs:
           sudo apt-get install -y qemu-system-x86 qemu-utils zstd socat
           sudo chmod 666 /dev/kvm
 
-      - name: Restore cached disk image
-        id: cache-disk
+      - name: Restore cached VM image
+        id: cache-vm
         uses: actions/cache/restore@v4
         with:
           path: /tmp/truenas-disk-cache
-          key: truenas-disk-${{ env.TRUENAS_VERSION }}-${{ hashFiles('cmd/setup-truenas/**') }}
+          key: truenas-vm-${{ env.TRUENAS_VERSION }}-${{ hashFiles('cmd/setup-truenas/**', 'scripts/truenas-vm.sh') }}
 
       - name: Restore TrueNAS ISO cache
-        if: steps.cache-disk.outputs.cache-hit != 'true'
+        if: steps.cache-vm.outputs.cache-hit != 'true'
         id: cache-iso
         uses: actions/cache/restore@v4
         with:
@@ -47,38 +47,39 @@ jobs:
           key: truenas-iso-${{ env.TRUENAS_VERSION }}
 
       - name: Download TrueNAS ISO
-        if: steps.cache-disk.outputs.cache-hit != 'true' && steps.cache-iso.outputs.cache-hit != 'true'
+        if: steps.cache-vm.outputs.cache-hit != 'true' && steps.cache-iso.outputs.cache-hit != 'true'
         run: |
           curl -L -o /tmp/truenas.iso \
             "https://download.truenas.com/TrueNAS-SCALE-Goldeye/${TRUENAS_VERSION}/TrueNAS-SCALE-${TRUENAS_VERSION}.iso"
 
       - name: Save TrueNAS ISO cache
-        if: steps.cache-disk.outputs.cache-hit != 'true' && steps.cache-iso.outputs.cache-hit != 'true'
+        if: steps.cache-vm.outputs.cache-hit != 'true' && steps.cache-iso.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: /tmp/truenas.iso
           key: truenas-iso-${{ env.TRUENAS_VERSION }}
 
-      - name: Decompress cached disk
-        if: steps.cache-disk.outputs.cache-hit == 'true'
+      - name: Decompress cached VM
+        if: steps.cache-vm.outputs.cache-hit == 'true'
         run: |
           mkdir -p /tmp/truenas-vm
           zstd -d /tmp/truenas-disk-cache/disk.qcow2.zst -o /tmp/truenas-vm/disk.qcow2
+          zstd -d /tmp/truenas-disk-cache/data-disk.qcow2.zst -o /tmp/truenas-vm/data-disk.qcow2
 
       - name: Build setup-truenas
-        if: steps.cache-disk.outputs.cache-hit != 'true'
+        if: steps.cache-vm.outputs.cache-hit != 'true'
         run: go build -o setup-truenas ./cmd/setup-truenas
 
       - name: Start TrueNAS VM
         run: |
-          if [ "${{ steps.cache-disk.outputs.cache-hit }}" != "true" ]; then
+          if [ "${{ steps.cache-vm.outputs.cache-hit }}" != "true" ]; then
             TRUENAS_ISO=/tmp/truenas.iso scripts/truenas-vm.sh start
           else
-            scripts/truenas-vm.sh start
+            TRUENAS_VM_LOADVM=ready scripts/truenas-vm.sh start
           fi
 
       - name: Install & bootstrap TrueNAS
-        if: steps.cache-disk.outputs.cache-hit != 'true'
+        if: steps.cache-vm.outputs.cache-hit != 'true'
         timeout-minutes: 25
         run: |
           ./setup-truenas \
@@ -88,38 +89,47 @@ jobs:
             -admin-password testing123 \
             -output-file /tmp/truenas-api-key
 
-      - name: Snapshot disk image for cache
-        if: steps.cache-disk.outputs.cache-hit != 'true'
+      - name: Snapshot VM for cache
+        if: steps.cache-vm.outputs.cache-hit != 'true'
         run: |
-          # Live-snapshot: freeze disk.qcow2 and redirect writes to an overlay
-          echo "snapshot_blkdev virtio0 /tmp/truenas-vm/overlay.qcow2 qcow2" \
-            | socat - UNIX-CONNECT:/tmp/truenas-vm/monitor.sock
-          # disk.qcow2 is now read-only — compress it while VM keeps running
+          MONITOR=/tmp/truenas-vm/monitor.sock
+          # savevm while running so the restored state is live.
+          # snapshot_blkdev redirects writes to overlays so originals are
+          # safe to compress. HMP processes commands sequentially.
+          # We keep stdin open (sleep) so socat stays connected while
+          # QEMU processes the commands. 'info status' at the end is a
+          # barrier — its output confirms all preceding commands finished.
+          (
+            printf '%s\n' \
+              "savevm ready" \
+              "snapshot_blkdev boot0 /tmp/truenas-vm/overlay-boot.qcow2 qcow2" \
+              "snapshot_blkdev data0 /tmp/truenas-vm/overlay-data.qcow2 qcow2" \
+              "info status"
+            sleep 300
+          ) | timeout 120 socat - UNIX-CONNECT:"$MONITOR" > /tmp/truenas-vm/snapshot.log 2>&1 &
+          SOCAT_PID=$!
+          echo "Waiting for savevm + snapshot_blkdev to complete..."
+          while ! grep -q "VM status" /tmp/truenas-vm/snapshot.log 2>/dev/null; do
+            sleep 2
+          done
+          kill $SOCAT_PID 2>/dev/null || true
+          echo "VM snapshot complete"
+          # Compress both images while VM keeps running on overlays
           mkdir -p /tmp/truenas-disk-cache
           zstd -3 -T0 /tmp/truenas-vm/disk.qcow2 -o /tmp/truenas-disk-cache/disk.qcow2.zst
+          zstd -3 -T0 /tmp/truenas-vm/data-disk.qcow2 -o /tmp/truenas-disk-cache/data-disk.qcow2.zst
           cp /tmp/truenas-api-key /tmp/truenas-disk-cache/api-key
 
-      - name: Save disk image cache
-        if: steps.cache-disk.outputs.cache-hit != 'true'
+      - name: Save VM cache
+        if: steps.cache-vm.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: /tmp/truenas-disk-cache
-          key: truenas-disk-${{ env.TRUENAS_VERSION }}-${{ hashFiles('cmd/setup-truenas/**') }}
+          key: truenas-vm-${{ env.TRUENAS_VERSION }}-${{ hashFiles('cmd/setup-truenas/**', 'scripts/truenas-vm.sh') }}
 
       - name: Wait for TrueNAS API
-        if: steps.cache-disk.outputs.cache-hit == 'true'
         timeout-minutes: 5
-        run: |
-          echo "Waiting for TrueNAS API to be ready..."
-          for i in $(seq 1 60); do
-            if curl -sk -o /dev/null https://127.0.0.1:8443/ 2>/dev/null; then
-              echo "TrueNAS API is ready"
-              exit 0
-            fi
-            sleep 5
-          done
-          echo "Timed out waiting for TrueNAS API"
-          exit 1
+        run: scripts/truenas-vm.sh wait-api
 
       - name: Run acceptance tests
         run: |
@@ -132,6 +142,7 @@ jobs:
         env:
           TF_ACC: "1"
           TRUENAS_HOST: "wss://127.0.0.1:8443"
+          TRUENAS_POOL: "tank"
 
       - name: Dump serial log
         if: always()

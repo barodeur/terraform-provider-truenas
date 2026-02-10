@@ -134,6 +134,7 @@ func main() {
 	httpsPort := flag.Int("https-port", 8443, "TrueNAS HTTPS port (API, used for bootstrap)")
 	adminPassword := flag.String("admin-password", "testing123", "Admin password to set during install")
 	apiKeyName := flag.String("api-key-name", "terraform-integration-test", "Name of the API key to create")
+	poolName := flag.String("pool-name", "tank", "Name of the data pool to create")
 	outputFile := flag.String("output-file", "/tmp/truenas-api-key", "File to write the API key to")
 	installTimeout := flag.Duration("install-timeout", 15*time.Minute, "Timeout for installation phase")
 	bootTimeout := flag.Duration("boot-timeout", 10*time.Minute, "Timeout for post-install boot")
@@ -276,5 +277,102 @@ func main() {
 
 	fmt.Println(keyResult.Key)
 	log.Printf("API key written to %s", *outputFile)
+
+	// Phase 3: Create data pool
+	log.Println("=== Phase 3: Create Data Pool ===")
+
+	// Get all disks from the system
+	var apiDisks []map[string]any
+	if err := call(apiConn, "disk.query", nil, &apiDisks); err != nil {
+		log.Fatalf("disk.query failed: %v", err)
+	}
+
+	// Get the boot disk(s) to exclude them
+	var bootDiskNames []string
+	if err := call(apiConn, "boot.get_disks", nil, &bootDiskNames); err != nil {
+		log.Fatalf("boot.get_disks failed: %v", err)
+	}
+
+	bootDisks := map[string]bool{}
+	for _, name := range bootDiskNames {
+		bootDisks[name] = true
+	}
+	log.Printf("Boot disks: %v", bootDiskNames)
+
+	var poolDisks []string
+	for _, d := range apiDisks {
+		name, ok := d["name"].(string)
+		if !ok {
+			continue
+		}
+		if bootDisks[name] {
+			log.Printf("Skipping boot disk: %s", name)
+			continue
+		}
+		poolDisks = append(poolDisks, name)
+	}
+
+	if len(poolDisks) == 0 {
+		log.Fatal("No available disks for data pool. The VM needs at least 2 disks (1 for OS, 1+ for data).")
+	}
+
+	log.Printf("Available disks for pool: %v", poolDisks)
+
+	topology := map[string]any{
+		"data": []map[string]any{
+			{
+				"type":  "STRIPE",
+				"disks": poolDisks,
+			},
+		},
+	}
+
+	poolParams := map[string]any{
+		"name":     *poolName,
+		"topology": topology,
+	}
+
+	var jobID int64
+	if err := call(apiConn, "pool.create", []any{poolParams}, &jobID); err != nil {
+		log.Fatalf("pool.create failed: %v", err)
+	}
+	log.Printf("Pool creation job started (id=%d), waiting...", jobID)
+
+	// pool.create sends async notifications that interfere with subsequent calls,
+	// so disconnect, wait, and reconnect to poll for pool readiness.
+	apiConn.Close()
+	time.Sleep(5 * time.Second)
+
+	apiURL2 := fmt.Sprintf("wss://%s:%d/api/current", *host, *httpsPort)
+	apiConn2, err := waitForWebSocket(apiURL2, wssDialer, 2*time.Minute)
+	if err != nil {
+		log.Fatalf("Failed to reconnect to TrueNAS API: %v", err)
+	}
+	defer apiConn2.Close()
+
+	var loginResult2 bool
+	if err := call(apiConn2, "auth.login", []any{"truenas_admin", *adminPassword}, &loginResult2); err != nil {
+		log.Fatalf("auth.login on reconnect failed: %v", err)
+	}
+
+	deadline := time.Now().Add(5 * time.Minute)
+	for time.Now().Before(deadline) {
+		var pools []map[string]any
+		if err := call(apiConn2, "pool.query", nil, &pools); err != nil {
+			log.Printf("pool.query failed (retrying): %v", err)
+			time.Sleep(3 * time.Second)
+			continue
+		}
+		for _, p := range pools {
+			if name, ok := p["name"].(string); ok && name == *poolName {
+				log.Printf("Created pool %q", *poolName)
+				goto poolReady
+			}
+		}
+		log.Printf("Pool not yet available (got %d pools), retrying...", len(pools))
+		time.Sleep(3 * time.Second)
+	}
+	log.Fatalf("Timed out waiting for pool %q to be created", *poolName)
+poolReady:
 	log.Println("Setup complete!")
 }

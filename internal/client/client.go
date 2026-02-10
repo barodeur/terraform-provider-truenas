@@ -29,7 +29,7 @@ type rpcRequest struct {
 
 type rpcResponse struct {
 	JSONRPC string          `json:"jsonrpc"`
-	ID      int64           `json:"id"`
+	ID      *int64          `json:"id"`
 	Result  json.RawMessage `json:"result"`
 	Error   *rpcError       `json:"error"`
 }
@@ -125,22 +125,41 @@ func (c *Client) Call(ctx context.Context, method string, params any, dest any) 
 		return fmt.Errorf("failed to send JSON-RPC request for %s: %w", method, err)
 	}
 
-	var resp rpcResponse
-	if err := c.conn.ReadJSON(&resp); err != nil {
-		return fmt.Errorf("failed to read JSON-RPC response for %s: %w", method, err)
-	}
-
-	if resp.Error != nil {
-		return resp.Error
-	}
-
-	if dest != nil {
-		if err := json.Unmarshal(resp.Result, dest); err != nil {
-			return fmt.Errorf("failed to unmarshal result for %s: %w", method, err)
+	for {
+		var resp rpcResponse
+		if err := c.conn.ReadJSON(&resp); err != nil {
+			return fmt.Errorf("failed to read JSON-RPC response for %s: %w", method, err)
 		}
-	}
 
-	return nil
+		// Skip notification messages (no id field)
+		if resp.ID == nil {
+			tflog.Trace(ctx, "Skipping WebSocket notification", map[string]any{
+				"method": method,
+			})
+			continue
+		}
+
+		// Skip responses with non-matching IDs
+		if *resp.ID != id {
+			tflog.Trace(ctx, "Skipping response with non-matching ID", map[string]any{
+				"expected_id": id,
+				"received_id": *resp.ID,
+			})
+			continue
+		}
+
+		if resp.Error != nil {
+			return resp.Error
+		}
+
+		if dest != nil {
+			if err := json.Unmarshal(resp.Result, dest); err != nil {
+				return fmt.Errorf("failed to unmarshal result for %s: %w", method, err)
+			}
+		}
+
+		return nil
+	}
 }
 
 func (c *Client) Close() error {
