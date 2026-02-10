@@ -8,6 +8,7 @@ TRUENAS_VM_PORT="${TRUENAS_VM_PORT:-8080}"
 TRUENAS_VM_HTTPS_PORT="${TRUENAS_VM_HTTPS_PORT:-8443}"
 
 TRUENAS_VM_DATA_DISK_SIZE="${TRUENAS_VM_DATA_DISK_SIZE:-8G}"
+TRUENAS_CACHE_DIR="${TRUENAS_CACHE_DIR:-$HOME/.cache/truenas-vm}"
 
 DISK="$TRUENAS_VM_DIR/disk.qcow2"
 DATA_DISK="$TRUENAS_VM_DIR/data-disk.qcow2"
@@ -26,14 +27,24 @@ cmd_start() {
 
     FRESH_DISK=false
     if [ ! -f "$DISK" ]; then
-        if [ -z "${TRUENAS_ISO:-}" ]; then
-            echo "Error: TRUENAS_ISO must be set for first boot (no disk image exists)" >&2
+        # Try restoring from cache before falling back to fresh install
+        if [ -f "$TRUENAS_CACHE_DIR/disk.qcow2.zst" ] && [ -f "$TRUENAS_CACHE_DIR/data-disk.qcow2.zst" ]; then
+            echo "Restoring VM from cache ($TRUENAS_CACHE_DIR)..."
+            zstd -d "$TRUENAS_CACHE_DIR/disk.qcow2.zst" -o "$DISK"
+            zstd -d "$TRUENAS_CACHE_DIR/data-disk.qcow2.zst" -o "$DATA_DISK"
+            if [ -f "$TRUENAS_CACHE_DIR/api-key" ]; then
+                cp "$TRUENAS_CACHE_DIR/api-key" /tmp/truenas-api-key
+            fi
+            TRUENAS_VM_LOADVM="${TRUENAS_VM_LOADVM:-ready}"
+        elif [ -z "${TRUENAS_ISO:-}" ]; then
+            echo "Error: TRUENAS_ISO must be set for first boot (no disk image or cache exists)" >&2
             exit 1
+        else
+            echo "Creating 16G boot disk image..."
+            qemu-img create -f qcow2 "$DISK" 16G
+            FRESH_DISK=true
+            rm -f "$INSTALLED_MARKER"
         fi
-        echo "Creating 16G boot disk image..."
-        qemu-img create -f qcow2 "$DISK" 16G
-        FRESH_DISK=true
-        rm -f "$INSTALLED_MARKER"
     fi
 
     if [ ! -f "$DATA_DISK" ]; then
@@ -191,14 +202,57 @@ cmd_status() {
     fi
 }
 
+cmd_snapshot() {
+    if [ ! -f "$PIDFILE" ] || ! kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+        echo "Error: VM must be running to snapshot" >&2
+        exit 1
+    fi
+
+    if [ ! -S "$MONITOR_SOCK" ]; then
+        echo "Error: Monitor socket not found at $MONITOR_SOCK" >&2
+        exit 1
+    fi
+
+    echo "Creating VM snapshot..."
+    local snapshot_log="$TRUENAS_VM_DIR/snapshot.log"
+    (
+        printf '%s\n' \
+            "savevm ready" \
+            "snapshot_blkdev boot0 $TRUENAS_VM_DIR/overlay-boot.qcow2 qcow2" \
+            "snapshot_blkdev data0 $TRUENAS_VM_DIR/overlay-data.qcow2 qcow2" \
+            "info status"
+        sleep 300
+    ) | timeout 120 socat - UNIX-CONNECT:"$MONITOR_SOCK" > "$snapshot_log" 2>&1 &
+    local socat_pid=$!
+
+    echo "Waiting for savevm + snapshot_blkdev to complete..."
+    while ! grep -q "VM status" "$snapshot_log" 2>/dev/null; do
+        sleep 2
+    done
+    kill $socat_pid 2>/dev/null || true
+    echo "VM snapshot complete"
+
+    echo "Compressing disk images to $TRUENAS_CACHE_DIR..."
+    mkdir -p "$TRUENAS_CACHE_DIR"
+    zstd -3 -T0 --force "$DISK" -o "$TRUENAS_CACHE_DIR/disk.qcow2.zst"
+    zstd -3 -T0 --force "$DATA_DISK" -o "$TRUENAS_CACHE_DIR/data-disk.qcow2.zst"
+    if [ -f /tmp/truenas-api-key ]; then
+        cp /tmp/truenas-api-key "$TRUENAS_CACHE_DIR/api-key"
+    fi
+
+    echo "Cache saved to $TRUENAS_CACHE_DIR"
+    ls -lh "$TRUENAS_CACHE_DIR/"
+}
+
 case "${1:-}" in
     start)    cmd_start ;;
     stop)     cmd_stop ;;
+    snapshot) cmd_snapshot ;;
     clean)    cmd_clean ;;
     status)   cmd_status ;;
     wait-api) cmd_wait_api ;;
     *)
-        echo "Usage: $0 {start|stop|clean|status|wait-api}" >&2
+        echo "Usage: $0 {start|stop|snapshot|clean|status|wait-api}" >&2
         echo "" >&2
         echo "Environment variables:" >&2
         echo "  TRUENAS_ISO              Path to TrueNAS ISO (required for first boot)" >&2
@@ -209,6 +263,7 @@ case "${1:-}" in
         echo "  TRUENAS_VM_PORT          Host port forwarded to VM port 80 (default: 8080)" >&2
         echo "  TRUENAS_VM_HTTPS_PORT    Host port forwarded to VM port 443 (default: 8443)" >&2
         echo "  TRUENAS_VM_WAIT_TIMEOUT  Timeout in seconds for wait-api (default: 300)" >&2
+        echo "  TRUENAS_CACHE_DIR        Persistent cache directory (default: ~/.cache/truenas-vm)" >&2
         exit 1
         ;;
 esac
