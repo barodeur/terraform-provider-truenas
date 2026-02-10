@@ -356,12 +356,19 @@ func (r *poolDatasetResource) Update(ctx context.Context, req resource.UpdateReq
 	setStringParamOrInherit(params, "readonly", plan.Readonly)
 	setStringParamOrInherit(params, "deduplication", plan.Deduplication)
 	setStringParamOrInherit(params, "checksum", plan.Checksum)
-	setInt64ParamOrInherit(params, "copies", plan.Copies)
+	// copies accepts int or "INHERIT"
+	if plan.Copies.IsNull() {
+		params["copies"] = "INHERIT"
+	} else {
+		params["copies"] = plan.Copies.ValueInt64()
+	}
 	setStringParamOrInherit(params, "snapdir", plan.Snapdir)
-	setInt64ParamOrInherit(params, "quota", plan.Quota)
-	setInt64ParamOrInherit(params, "refquota", plan.Refquota)
-	setInt64ParamOrInherit(params, "reservation", plan.Reservation)
-	setInt64ParamOrInherit(params, "refreservation", plan.Refreservation)
+	// quota and refquota accept int or nil
+	setInt64ParamOrNil(params, "quota", plan.Quota)
+	setInt64ParamOrNil(params, "refquota", plan.Refquota)
+	// reservation and refreservation accept int only; omit to leave unchanged
+	setInt64Param(params, "reservation", plan.Reservation)
+	setInt64Param(params, "refreservation", plan.Refreservation)
 	setStringParamOrInherit(params, "recordsize", plan.Recordsize)
 	setStringParamOrInherit(params, "aclmode", plan.Aclmode)
 
@@ -422,10 +429,10 @@ func setStringParamOrInherit(params map[string]any, key string, val types.String
 	setStringParam(params, key, val)
 }
 
-// setInt64ParamOrInherit sets an int field in update params: the numeric value if
-// non-null, or an explicit nil to request inheritance/unset when the Terraform
-// value is null.
-func setInt64ParamOrInherit(params map[string]any, key string, val types.Int64) {
+// setInt64ParamOrNil sets an int field in update params: the numeric value if
+// non-null, or an explicit nil to unset. Used for fields like quota/refquota
+// where the API accepts null.
+func setInt64ParamOrNil(params map[string]any, key string, val types.Int64) {
 	if val.IsNull() {
 		params[key] = nil
 	} else {
