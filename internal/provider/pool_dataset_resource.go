@@ -363,10 +363,10 @@ func (r *poolDatasetResource) Update(ctx context.Context, req resource.UpdateReq
 		params["copies"] = plan.Copies.ValueInt64()
 	}
 	setStringParamOrInherit(params, "snapdir", plan.Snapdir)
-	// quota and refquota accept int or nil
-	setInt64ParamOrNil(params, "quota", plan.Quota)
-	setInt64ParamOrNil(params, "refquota", plan.Refquota)
-	// reservation and refreservation accept int only; omit to leave unchanged
+	// quota, refquota, reservation, refreservation: omit when null to leave unchanged.
+	// The API accepts nil for quota/refquota but sets them to 0 (LOCAL), not inherited.
+	setInt64Param(params, "quota", plan.Quota)
+	setInt64Param(params, "refquota", plan.Refquota)
 	setInt64Param(params, "reservation", plan.Reservation)
 	setInt64Param(params, "refreservation", plan.Refreservation)
 	setStringParamOrInherit(params, "recordsize", plan.Recordsize)
@@ -427,17 +427,6 @@ func setInt64Param(params map[string]any, key string, val types.Int64) {
 // setStringParamOrInherit is an alias for setStringParam (same behavior for update).
 func setStringParamOrInherit(params map[string]any, key string, val types.String) {
 	setStringParam(params, key, val)
-}
-
-// setInt64ParamOrNil sets an int field in update params: the numeric value if
-// non-null, or an explicit nil to unset. Used for fields like quota/refquota
-// where the API accepts null.
-func setInt64ParamOrNil(params map[string]any, key string, val types.Int64) {
-	if val.IsNull() {
-		params[key] = nil
-	} else {
-		params[key] = val.ValueInt64()
-	}
 }
 
 // populateDatasetState updates the Terraform resource model from a TrueNAS API result.
