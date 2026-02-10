@@ -323,16 +323,16 @@ func (r *userResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		"full_name": plan.FullName.ValueString(),
 	}
 
-	if !plan.Email.IsNull() {
+	if !plan.Email.IsNull() && !plan.Email.IsUnknown() {
 		params["email"] = plan.Email.ValueString()
 	}
-	if !plan.Password.IsNull() && !plan.Password.Equal(state.Password) {
+	if !plan.Password.IsNull() && !plan.Password.IsUnknown() && !plan.Password.Equal(state.Password) {
 		params["password"] = plan.Password.ValueString()
 	}
-	if !plan.PasswordDisabled.IsNull() {
+	if !plan.PasswordDisabled.IsNull() && !plan.PasswordDisabled.IsUnknown() {
 		params["password_disabled"] = plan.PasswordDisabled.ValueBool()
 	}
-	if !plan.Group.IsNull() {
+	if !plan.Group.IsNull() && !plan.Group.IsUnknown() {
 		params["group"] = plan.Group.ValueInt64()
 	}
 	if !plan.Groups.IsNull() && !plan.Groups.IsUnknown() {
@@ -343,21 +343,21 @@ func (r *userResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		}
 		params["groups"] = groupIDs
 	}
-	if !plan.Home.IsNull() {
+	if !plan.Home.IsNull() && !plan.Home.IsUnknown() {
 		params["home"] = plan.Home.ValueString()
 	}
-	if !plan.Shell.IsNull() {
+	if !plan.Shell.IsNull() && !plan.Shell.IsUnknown() {
 		params["shell"] = plan.Shell.ValueString()
 	}
 	if plan.Sshpubkey.IsNull() {
 		params["sshpubkey"] = ""
-	} else {
+	} else if !plan.Sshpubkey.IsUnknown() {
 		params["sshpubkey"] = plan.Sshpubkey.ValueString()
 	}
-	if !plan.Smb.IsNull() {
+	if !plan.Smb.IsNull() && !plan.Smb.IsUnknown() {
 		params["smb"] = plan.Smb.ValueBool()
 	}
-	if !plan.Locked.IsNull() {
+	if !plan.Locked.IsNull() && !plan.Locked.IsUnknown() {
 		params["locked"] = plan.Locked.ValueBool()
 	}
 
@@ -383,8 +383,11 @@ func (r *userResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 		return
 	}
 
+	// Only delete the primary group if the provider created it (group_create was explicitly true).
+	// When the user provided an existing group ID, we must not delete it.
+	deleteGroup := !state.GroupCreate.IsNull() && state.GroupCreate.ValueBool()
 	deleteOpts := map[string]any{
-		"delete_group": true,
+		"delete_group": deleteGroup,
 	}
 
 	err := r.client.Call(ctx, "user.delete", []any{state.ID.ValueInt64(), deleteOpts}, nil)

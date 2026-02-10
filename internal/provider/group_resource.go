@@ -64,11 +64,12 @@ func (r *groupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 				},
 			},
 			"gid": schema.Int64Attribute{
-				Description: "The GID of the group. If not specified, TrueNAS assigns the next available GID.",
+				Description: "The GID of the group. If not specified, TrueNAS assigns the next available GID. Cannot be changed after creation.",
 				Optional:    true,
 				Computed:    true,
 				PlanModifiers: []planmodifier.Int64{
 					int64planmodifier.UseStateForUnknown(),
+					int64planmodifier.RequiresReplace(),
 				},
 			},
 			"name": schema.StringAttribute{

@@ -342,9 +342,12 @@ func (r *poolDatasetResource) Update(ctx context.Context, req resource.UpdateReq
 
 	params := map[string]any{}
 
-	// comments is a ZFS user property — only send if explicitly set, don't send INHERIT
+	// comments is a ZFS user property — handle explicit set and explicit unset (inherit)
 	if !plan.Comments.IsNull() {
 		params["comments"] = plan.Comments.ValueString()
+	} else if !state.Comments.IsNull() {
+		// Transition from a previously set comment to null: clear/unset so it can inherit
+		params["comments"] = nil
 	}
 	setStringParamOrInherit(params, "sync", plan.Sync)
 	setStringParamOrInherit(params, "compression", plan.Compression)
@@ -419,10 +422,13 @@ func setStringParamOrInherit(params map[string]any, key string, val types.String
 	setStringParam(params, key, val)
 }
 
-// setInt64ParamOrInherit sets an int field in update params: value if non-null,
-// omitted if null (to preserve the current value/inheritance).
+// setInt64ParamOrInherit sets an int field in update params: the numeric value if
+// non-null, or an explicit nil to request inheritance/unset when the Terraform
+// value is null.
 func setInt64ParamOrInherit(params map[string]any, key string, val types.Int64) {
-	if !val.IsNull() {
+	if val.IsNull() {
+		params[key] = nil
+	} else {
 		params[key] = val.ValueInt64()
 	}
 }

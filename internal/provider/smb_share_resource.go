@@ -199,6 +199,27 @@ func (r *smbShareResource) Create(ctx context.Context, req resource.CreateReques
 		params["access_based_share_enumeration"] = plan.AccessBasedShareEnum.ValueBool()
 	}
 
+	options := map[string]any{}
+	if !plan.Hostsallow.IsNull() && !plan.Hostsallow.IsUnknown() {
+		var hostsAllow []string
+		resp.Diagnostics.Append(plan.Hostsallow.ElementsAs(ctx, &hostsAllow, false)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		options["hostsallow"] = hostsAllow
+	}
+	if !plan.Hostsdeny.IsNull() && !plan.Hostsdeny.IsUnknown() {
+		var hostsDeny []string
+		resp.Diagnostics.Append(plan.Hostsdeny.ElementsAs(ctx, &hostsDeny, false)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		options["hostsdeny"] = hostsDeny
+	}
+	if len(options) > 0 {
+		params["options"] = options
+	}
+
 	var result smbShareResult
 	err := r.client.Call(ctx, "sharing.smb.create", []any{params}, &result)
 	if err != nil {
@@ -264,6 +285,30 @@ func (r *smbShareResource) Update(ctx context.Context, req resource.UpdateReques
 	}
 	if !plan.AccessBasedShareEnum.IsNull() {
 		params["access_based_share_enumeration"] = plan.AccessBasedShareEnum.ValueBool()
+	}
+	if !plan.Purpose.IsNull() && !plan.Purpose.IsUnknown() {
+		params["purpose"] = plan.Purpose.ValueString()
+	}
+
+	options := map[string]any{}
+	if !plan.Hostsallow.IsNull() && !plan.Hostsallow.IsUnknown() {
+		var hostsAllow []string
+		resp.Diagnostics.Append(plan.Hostsallow.ElementsAs(ctx, &hostsAllow, false)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		options["hostsallow"] = hostsAllow
+	}
+	if !plan.Hostsdeny.IsNull() && !plan.Hostsdeny.IsUnknown() {
+		var hostsDeny []string
+		resp.Diagnostics.Append(plan.Hostsdeny.ElementsAs(ctx, &hostsDeny, false)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		options["hostsdeny"] = hostsDeny
+	}
+	if len(options) > 0 {
+		params["options"] = options
 	}
 
 	var result smbShareResult
