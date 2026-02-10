@@ -96,11 +96,24 @@ jobs:
           # savevm while running so the restored state is live.
           # snapshot_blkdev redirects writes to overlays so originals are
           # safe to compress. HMP processes commands sequentially.
-          printf '%s\n' \
-            "savevm ready" \
-            "snapshot_blkdev boot0 /tmp/truenas-vm/overlay-boot.qcow2 qcow2" \
-            "snapshot_blkdev data0 /tmp/truenas-vm/overlay-data.qcow2 qcow2" \
-            | socat - UNIX-CONNECT:"$MONITOR"
+          # We keep stdin open (sleep) so socat stays connected while
+          # QEMU processes the commands. 'info status' at the end is a
+          # barrier — its output confirms all preceding commands finished.
+          (
+            printf '%s\n' \
+              "savevm ready" \
+              "snapshot_blkdev boot0 /tmp/truenas-vm/overlay-boot.qcow2 qcow2" \
+              "snapshot_blkdev data0 /tmp/truenas-vm/overlay-data.qcow2 qcow2" \
+              "info status"
+            sleep 300
+          ) | timeout 120 socat - UNIX-CONNECT:"$MONITOR" > /tmp/truenas-vm/snapshot.log 2>&1 &
+          SOCAT_PID=$!
+          echo "Waiting for savevm + snapshot_blkdev to complete..."
+          while ! grep -q "VM status" /tmp/truenas-vm/snapshot.log 2>/dev/null; do
+            sleep 2
+          done
+          kill $SOCAT_PID 2>/dev/null; wait $SOCAT_PID 2>/dev/null || true
+          echo "VM snapshot complete"
           # Compress both images while VM keeps running on overlays
           mkdir -p /tmp/truenas-disk-cache
           zstd -3 -T0 /tmp/truenas-vm/disk.qcow2 -o /tmp/truenas-disk-cache/disk.qcow2.zst
