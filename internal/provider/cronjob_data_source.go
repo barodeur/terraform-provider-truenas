@@ -144,20 +144,26 @@ func (d *cronjobDataSource) Read(ctx context.Context, req datasource.ReadRequest
 	}
 
 	result := results[0]
+	schedule, diags := types.ObjectValue(cronjobScheduleAttrTypes, map[string]attr.Value{
+		"minute": types.StringValue(result.Schedule.Minute),
+		"hour":   types.StringValue(result.Schedule.Hour),
+		"dom":    types.StringValue(result.Schedule.Dom),
+		"month":  types.StringValue(result.Schedule.Month),
+		"dow":    types.StringValue(result.Schedule.Dow),
+	})
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	state := cronjobDataSourceModel{
-		ID:      types.Int64Value(result.ID),
-		Command: types.StringValue(result.Command),
-		User:    types.StringValue(result.User),
-		Enabled: types.BoolValue(result.Enabled),
-		Stdout:  types.BoolValue(result.Stdout),
-		Stderr:  types.BoolValue(result.Stderr),
-		Schedule: types.ObjectValueMust(cronjobScheduleAttrTypes, map[string]attr.Value{
-			"minute": types.StringValue(result.Schedule.Minute),
-			"hour":   types.StringValue(result.Schedule.Hour),
-			"dom":    types.StringValue(result.Schedule.Dom),
-			"month":  types.StringValue(result.Schedule.Month),
-			"dow":    types.StringValue(result.Schedule.Dow),
-		}),
+		ID:       types.Int64Value(result.ID),
+		Command:  types.StringValue(result.Command),
+		User:     types.StringValue(result.User),
+		Enabled:  types.BoolValue(result.Enabled),
+		Stdout:   types.BoolValue(result.Stdout),
+		Stderr:   types.BoolValue(result.Stderr),
+		Schedule: schedule,
 	}
 	if result.Description != "" {
 		state.Description = types.StringValue(result.Description)

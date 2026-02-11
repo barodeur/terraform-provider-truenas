@@ -6,9 +6,11 @@ import (
 	"strconv"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -57,7 +59,7 @@ var cronjobScheduleAttrTypes = map[string]attr.Type{
 type cronjobCreateParams struct {
 	Command     string          `json:"command"`
 	User        string          `json:"user"`
-	Description string          `json:"description,omitempty"`
+	Description string          `json:"description"`
 	Enabled     bool            `json:"enabled"`
 	Stdout      bool            `json:"stdout"`
 	Stderr      bool            `json:"stderr"`
@@ -118,16 +120,19 @@ func (r *cronjobResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Description: "Whether the cron job is enabled.",
 				Optional:    true,
 				Computed:    true,
+				Default:     booldefault.StaticBool(true),
 			},
 			"stdout": schema.BoolAttribute{
 				Description: "Whether to hide standard output.",
 				Optional:    true,
 				Computed:    true,
+				Default:     booldefault.StaticBool(true),
 			},
 			"stderr": schema.BoolAttribute{
 				Description: "Whether to hide standard error.",
 				Optional:    true,
 				Computed:    true,
+				Default:     booldefault.StaticBool(false),
 			},
 			"schedule": schema.SingleNestedAttribute{
 				Description: "The cron schedule.",
@@ -203,19 +208,9 @@ func (r *cronjobResource) Create(ctx context.Context, req resource.CreateRequest
 	if !plan.Description.IsNull() {
 		params.Description = plan.Description.ValueString()
 	}
-	if !plan.Enabled.IsNull() && !plan.Enabled.IsUnknown() {
-		params.Enabled = plan.Enabled.ValueBool()
-	} else {
-		params.Enabled = true
-	}
-	if !plan.Stdout.IsNull() && !plan.Stdout.IsUnknown() {
-		params.Stdout = plan.Stdout.ValueBool()
-	} else {
-		params.Stdout = true
-	}
-	if !plan.Stderr.IsNull() && !plan.Stderr.IsUnknown() {
-		params.Stderr = plan.Stderr.ValueBool()
-	}
+	params.Enabled = plan.Enabled.ValueBool()
+	params.Stdout = plan.Stdout.ValueBool()
+	params.Stderr = plan.Stderr.ValueBool()
 
 	var result cronjobResult
 	err := r.client.Call(ctx, "cronjob.create", []any{params}, &result)
@@ -224,7 +219,10 @@ func (r *cronjobResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	setCronjobResourceState(&plan, &result)
+	resp.Diagnostics.Append(setCronjobResourceState(&plan, &result)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -249,7 +247,10 @@ func (r *cronjobResource) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
-	setCronjobResourceState(&state, &results[0])
+	resp.Diagnostics.Append(setCronjobResourceState(&state, &results[0])...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -283,22 +284,10 @@ func (r *cronjobResource) Update(ctx context.Context, req resource.UpdateRequest
 			Dow:    sched.Dow.ValueString(),
 		},
 	}
-	if !plan.Description.IsNull() {
-		params.Description = plan.Description.ValueString()
-	}
-	if !plan.Enabled.IsNull() && !plan.Enabled.IsUnknown() {
-		params.Enabled = plan.Enabled.ValueBool()
-	} else {
-		params.Enabled = true
-	}
-	if !plan.Stdout.IsNull() && !plan.Stdout.IsUnknown() {
-		params.Stdout = plan.Stdout.ValueBool()
-	} else {
-		params.Stdout = true
-	}
-	if !plan.Stderr.IsNull() && !plan.Stderr.IsUnknown() {
-		params.Stderr = plan.Stderr.ValueBool()
-	}
+	params.Description = plan.Description.ValueString()
+	params.Enabled = plan.Enabled.ValueBool()
+	params.Stdout = plan.Stdout.ValueBool()
+	params.Stderr = plan.Stderr.ValueBool()
 
 	var result cronjobResult
 	err := r.client.Call(ctx, "cronjob.update", []any{state.ID.ValueInt64(), params}, &result)
@@ -307,7 +296,10 @@ func (r *cronjobResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	setCronjobResourceState(&plan, &result)
+	resp.Diagnostics.Append(setCronjobResourceState(&plan, &result)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -338,7 +330,7 @@ func (r *cronjobResource) ImportState(ctx context.Context, req resource.ImportSt
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), types.Int64Value(id))...)
 }
 
-func setCronjobResourceState(model *cronjobResourceModel, result *cronjobResult) {
+func setCronjobResourceState(model *cronjobResourceModel, result *cronjobResult) diag.Diagnostics {
 	model.ID = types.Int64Value(result.ID)
 	model.Command = types.StringValue(result.Command)
 	model.User = types.StringValue(result.User)
@@ -350,11 +342,14 @@ func setCronjobResourceState(model *cronjobResourceModel, result *cronjobResult)
 	model.Enabled = types.BoolValue(result.Enabled)
 	model.Stdout = types.BoolValue(result.Stdout)
 	model.Stderr = types.BoolValue(result.Stderr)
-	model.Schedule = types.ObjectValueMust(cronjobScheduleAttrTypes, map[string]attr.Value{
+
+	scheduleValue, diags := types.ObjectValue(cronjobScheduleAttrTypes, map[string]attr.Value{
 		"minute": types.StringValue(result.Schedule.Minute),
 		"hour":   types.StringValue(result.Schedule.Hour),
 		"dom":    types.StringValue(result.Schedule.Dom),
 		"month":  types.StringValue(result.Schedule.Month),
 		"dow":    types.StringValue(result.Schedule.Dow),
 	})
+	model.Schedule = scheduleValue
+	return diags
 }

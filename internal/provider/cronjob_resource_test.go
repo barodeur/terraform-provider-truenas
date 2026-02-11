@@ -169,6 +169,28 @@ func TestAccCronjobResource_defaults(t *testing.T) {
 	})
 }
 
+func TestAccCronjobResource_removeDescription(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckCronjobDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccCronjobResourceConfigFull("echo desc", "root", "Has description", true, true, false, "0", "0", "*", "*", "*"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("truenas_cronjob.test", "description", "Has description"),
+				),
+			},
+			{
+				Config: testAccCronjobResourceConfig("echo desc", "root", "0", "0", "*", "*", "*"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("truenas_cronjob.test", "description"),
+				),
+			},
+		},
+	})
+}
+
 func testAccCronjobResourceConfig(command, user, minute, hour, dom, month, dow string) string {
 	return testAccProviderConfig() + fmt.Sprintf(`
 resource "truenas_cronjob" "test" {
