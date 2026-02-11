@@ -123,13 +123,13 @@ func (r *cronjobResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Default:     booldefault.StaticBool(true),
 			},
 			"stdout": schema.BoolAttribute{
-				Description: "Whether to hide standard output.",
+				Description: "Whether to suppress standard output. When false, stdout is emailed to the user.",
 				Optional:    true,
 				Computed:    true,
 				Default:     booldefault.StaticBool(true),
 			},
 			"stderr": schema.BoolAttribute{
-				Description: "Whether to hide standard error.",
+				Description: "Whether to suppress standard error. When false, stderr is emailed to the user.",
 				Optional:    true,
 				Computed:    true,
 				Default:     booldefault.StaticBool(false),

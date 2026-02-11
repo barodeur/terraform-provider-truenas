@@ -65,11 +65,11 @@ func (d *cronjobDataSource) Schema(_ context.Context, _ datasource.SchemaRequest
 				Computed:    true,
 			},
 			"stdout": schema.BoolAttribute{
-				Description: "Whether to hide standard output.",
+				Description: "Whether to suppress standard output. When false, stdout is emailed to the user.",
 				Computed:    true,
 			},
 			"stderr": schema.BoolAttribute{
-				Description: "Whether to hide standard error.",
+				Description: "Whether to suppress standard error. When false, stderr is emailed to the user.",
 				Computed:    true,
 			},
 			"schedule": schema.SingleNestedAttribute{
