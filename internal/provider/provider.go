@@ -136,6 +136,7 @@ func (p *truenasProvider) Configure(ctx context.Context, req provider.ConfigureR
 func (p *truenasProvider) Resources(_ context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		NewAPIKeyResource,
+		NewCronjobResource,
 		NewPoolDatasetResource,
 		NewGroupResource,
 		NewUserResource,
@@ -147,6 +148,7 @@ func (p *truenasProvider) Resources(_ context.Context) []func() resource.Resourc
 func (p *truenasProvider) DataSources(_ context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
 		NewAPIKeyDataSource,
+		NewCronjobDataSource,
 		NewPoolDataSource,
 	}
 }
