@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -82,7 +81,7 @@ data "truenas_cronjob" "test" {
 }
 
 func testAccCronjobDataSourceAllFieldsConfig() string {
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return testAccProviderConfig() + `
 resource "truenas_cronjob" "test" {
   command     = "echo ds-full"
   user        = "root"
@@ -102,5 +101,5 @@ resource "truenas_cronjob" "test" {
 data "truenas_cronjob" "test" {
   id = truenas_cronjob.test.id
 }
-`)
+`
 }

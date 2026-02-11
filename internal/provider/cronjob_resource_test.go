@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/barodeur/terraform-provider-truenas/internal/client"
@@ -15,6 +16,9 @@ import (
 func testAccCheckCronjobDestroy(s *terraform.State) error {
 	ctx := context.Background()
 	host := os.Getenv("TRUENAS_HOST")
+	if !strings.HasPrefix(host, "ws://") && !strings.HasPrefix(host, "wss://") {
+		host = "wss://" + host
+	}
 	apiKey := os.Getenv("TRUENAS_API_KEY")
 	c, err := client.NewClient(ctx, host, apiKey, true)
 	if err != nil {

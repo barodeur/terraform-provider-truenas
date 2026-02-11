@@ -205,9 +205,7 @@ func (r *cronjobResource) Create(ctx context.Context, req resource.CreateRequest
 			Dow:    sched.Dow.ValueString(),
 		},
 	}
-	if !plan.Description.IsNull() {
-		params.Description = plan.Description.ValueString()
-	}
+	params.Description = plan.Description.ValueString()
 	params.Enabled = plan.Enabled.ValueBool()
 	params.Stdout = plan.Stdout.ValueBool()
 	params.Stderr = plan.Stderr.ValueBool()
