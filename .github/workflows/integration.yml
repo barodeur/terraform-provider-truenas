@@ -36,7 +36,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.cache/truenas-vm
-          key: truenas-vm-${{ env.TRUENAS_VERSION }}-${{ hashFiles('cmd/setup-truenas/**', 'scripts/truenas-vm.sh') }}
+          key: truenas-vm-${{ env.TRUENAS_VERSION }}-${{ hashFiles('cmd/setup-truenas/**', 'scripts/truenas-vm.sh', 'scripts/testacc.sh') }}
 
       - name: Restore TrueNAS ISO cache
         if: steps.cache-vm.outputs.cache-hit != 'true'
@@ -73,7 +73,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ~/.cache/truenas-vm
-          key: truenas-vm-${{ env.TRUENAS_VERSION }}-${{ hashFiles('cmd/setup-truenas/**', 'scripts/truenas-vm.sh') }}
+          key: truenas-vm-${{ env.TRUENAS_VERSION }}-${{ hashFiles('cmd/setup-truenas/**', 'scripts/truenas-vm.sh', 'scripts/testacc.sh') }}
 
       - name: Dump serial log
         if: always()

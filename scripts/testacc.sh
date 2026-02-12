@@ -158,8 +158,15 @@ esac
 
 # --- Run tests ---
 
-export TRUENAS_HOST="wss://127.0.0.1:${TRUENAS_VM_HTTPS_PORT}"
-export TRUENAS_API_KEY="$(cat /tmp/truenas-api-key)"
+export TRUENAS_HOST="${TRUENAS_HOST:-wss://127.0.0.1:${TRUENAS_VM_HTTPS_PORT}}"
+if [[ -z "${TRUENAS_API_KEY:-}" ]]; then
+    if [[ -f /tmp/truenas-api-key ]]; then
+        export TRUENAS_API_KEY="$(cat /tmp/truenas-api-key)"
+    else
+        echo "Error: /tmp/truenas-api-key not found and TRUENAS_API_KEY not set" >&2
+        exit 1
+    fi
+fi
 export TRUENAS_POOL="${TRUENAS_POOL:-tank}"
 
 echo ""
