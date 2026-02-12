@@ -41,32 +41,45 @@ go vet ./...        # Vet all packages
 
 ## Acceptance Test VM
 
-A QEMU-based TrueNAS VM is used for acceptance tests. State lives in `/tmp/truenas-vm`.
+A QEMU-based TrueNAS VM is used for acceptance tests. Use `scripts/testacc.sh` as the single entry point:
+
+```
+scripts/testacc.sh                          # Default: restore snapshot, test
+scripts/testacc.sh --vm=running             # Reuse running VM as-is
+scripts/testacc.sh --vm=reinstall           # Boot from cached ISO, re-run setup
+scripts/testacc.sh --vm=full                # Purge caches, download ISO, full rebuild
+scripts/testacc.sh --vm=running -run TestAccGroup  # Pass extra go test flags
+scripts/testacc.sh --version=25.10.2 --vm=full     # Use a different TrueNAS version
+```
+
+**VM modes:**
+
+| Mode | What it does | When to use |
+|------|-------------|-------------|
+| `snapshot` (default) | Stop + clean VM, restore cached snapshot, wait for API | Normal development iteration |
+| `running` | Skip all VM lifecycle, test against running VM | Quick re-runs when VM is already good |
+| `reinstall` | Clean VM, boot from cached ISO, run setup-truenas, snapshot | Setup code or provider changed |
+| `full` | Purge all caches, download ISO, boot, setup, snapshot | New TrueNAS version or start from scratch |
+
+The script exports the required env vars and stops the VM on exit (except in `running` mode). Snapshot restoration gives a clean state, so no sweepers are needed.
+
+### Low-level VM management
+
+For manual VM control, use `scripts/truenas-vm.sh` directly:
 
 ```
 scripts/truenas-vm.sh status   # Check if VM is running
-scripts/truenas-vm.sh start    # Start (needs TRUENAS_ISO on first boot only)
+scripts/truenas-vm.sh start    # Start (restores from cache, or needs TRUENAS_ISO)
 scripts/truenas-vm.sh stop     # Stop
+scripts/truenas-vm.sh clean    # Stop + remove /tmp/truenas-vm
+scripts/truenas-vm.sh snapshot # Save VM state to ~/.cache/truenas-vm
 ```
 
-After install, `cmd/setup-truenas` bootstraps the VM (creates API key + pool). The API key is written to `/tmp/truenas-api-key`.
-
-### Running acceptance tests against the VM
-
-```
-TRUENAS_HOST="wss://127.0.0.1:8443" \
-TRUENAS_API_KEY="$(cat /tmp/truenas-api-key)" \
-TRUENAS_POOL=tank \
-TF_ACC=1 go test ./internal/provider/ -v -timeout 10m
-```
-
-### Stale test resources
-
-Acceptance tests for groups and users can leave behind resources on failure. Before re-running tests, clean up stale groups (`tf-acc-test-group`, `tf-acc-test-group-smb`, `tf-acc-test-usergrp`) and users (`tfaccuser`, `tfaccuserupd`, `tfaccusergrp`) via the API.
+`cmd/setup-truenas` bootstraps a fresh VM (installer, API key, pool). The API key is written to `/tmp/truenas-api-key`.
 
 ### Pool creation
 
-The pool `tank` must exist before running tests (the provider doesn't manage pools). If missing, create it via WebSocket API using `pool.create` with the available data disk (`vdb`).
+The pool `tank` must exist before running tests (the provider doesn't manage pools). `scripts/testacc.sh` handles this automatically in `reinstall` and `full` modes via `setup-truenas`.
 
 ## Adding a new resource
 
