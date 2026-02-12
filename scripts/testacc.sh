@@ -110,8 +110,9 @@ case "$VM_MODE" in
             exit 1
         fi
 
-        # Boot from ISO, run setup, snapshot
-        TRUENAS_ISO="$ISO_PATH" vm start
+        # Boot from ISO (use empty cache dir so we don't restore old snapshots)
+        REINSTALL_CACHE="$(mktemp -d "${TMPDIR:-/tmp}/truenas-vm-cache.XXXXXX")"
+        TRUENAS_CACHE_DIR="$REINSTALL_CACHE" TRUENAS_ISO="$ISO_PATH" vm start
         go build -o "$PROJECT_DIR/setup-truenas" "$PROJECT_DIR/cmd/setup-truenas"
         "$PROJECT_DIR/setup-truenas" \
             -host 127.0.0.1 \
@@ -138,7 +139,7 @@ case "$VM_MODE" in
             echo "Downloading TrueNAS SCALE ${TRUENAS_VERSION}..."
             echo "  URL: $ISO_URL"
             echo "  Destination: $ISO_PATH"
-            curl -L -o "$ISO_PATH" "$ISO_URL"
+            curl --fail -L -o "$ISO_PATH" "$ISO_URL"
         else
             echo "ISO already exists: $ISO_PATH"
         fi
