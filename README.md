@@ -115,17 +115,16 @@ make lint      # run golangci-lint
 
 ### Running acceptance tests
 
-Acceptance tests require a running TrueNAS Scale instance:
+Acceptance tests run against a QEMU-based TrueNAS VM. Use `scripts/testacc.sh` as the single entry point:
 
 ```sh
-export TRUENAS_HOST="wss://127.0.0.1:8443"
-export TRUENAS_API_KEY="your-api-key"
-export TF_ACC=1
-go test ./internal/provider/ -v -timeout 5m
+scripts/testacc.sh                          # Restore cached snapshot, run tests
+scripts/testacc.sh --vm=running             # Reuse a running VM as-is
+scripts/testacc.sh --vm=reinstall           # Boot from cached ISO, re-run setup
+scripts/testacc.sh --vm=full                # Download ISO, full rebuild from scratch
+scripts/testacc.sh --vm=running -run TestAccGroup  # Pass extra go test flags
 ```
 
-Or use the VM-based test harness (requires a TrueNAS ISO and QEMU):
+The first run requires `--vm=full` (or `--vm=reinstall` with `TRUENAS_ISO` set) to build the VM. Subsequent runs use `snapshot` mode (the default), which restores a cached VM image in seconds.
 
-```sh
-TRUENAS_ISO=/path/to/TrueNAS-SCALE.iso make testacc-vm
-```
+Requires QEMU, zstd, and socat (`apt install qemu-system-x86 qemu-utils zstd socat`).
