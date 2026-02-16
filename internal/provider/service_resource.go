@@ -121,6 +121,13 @@ func (r *serviceResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
+	// Check config to determine if user explicitly set running
+	var configRunning types.Bool
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("running"), &configRunning)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	// Look up the service by name
 	var results []serviceResult
 	err := r.client.Call(ctx, "service.query", []any{
@@ -149,9 +156,9 @@ func (r *serviceResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	// Control running state if user specified it
-	if !plan.Running.IsNull() && !plan.Running.IsUnknown() {
-		desiredRunning := plan.Running.ValueBool()
+	// Control running state only if user explicitly set it in config
+	if !configRunning.IsNull() {
+		desiredRunning := configRunning.ValueBool()
 		currentlyRunning := svc.State == "RUNNING"
 		if desiredRunning != currentlyRunning {
 			err = r.controlService(ctx, plan.Service.ValueString(), desiredRunning)
@@ -209,6 +216,13 @@ func (r *serviceResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
+	// Check config to determine if user explicitly set running
+	var configRunning types.Bool
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("running"), &configRunning)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	// Update enable setting
 	err := r.client.Call(ctx, "service.update", []any{state.ID.ValueInt64(), map[string]any{
 		"enable": plan.Enable.ValueBool(),
@@ -218,8 +232,8 @@ func (r *serviceResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	// Control running state if user specified it
-	if !plan.Running.IsNull() && !plan.Running.IsUnknown() {
+	// Control running state only if user explicitly set it in config
+	if !configRunning.IsNull() {
 		// Query live state to decide whether to start/stop, in case the
 		// service was changed outside Terraform since last read.
 		var current serviceResult
@@ -229,7 +243,7 @@ func (r *serviceResource) Update(ctx context.Context, req resource.UpdateRequest
 			return
 		}
 
-		desiredRunning := plan.Running.ValueBool()
+		desiredRunning := configRunning.ValueBool()
 		currentlyRunning := current.State == "RUNNING"
 		if desiredRunning != currentlyRunning {
 			err = r.controlService(ctx, plan.Service.ValueString(), desiredRunning)
@@ -282,7 +296,7 @@ func (r *serviceResource) ImportState(ctx context.Context, req resource.ImportSt
 
 // controlService starts or stops a service and waits for the state to converge.
 // service.control is a @job method that returns asynchronously, so we poll
-// get_instance until the service reaches the expected state.
+// service.query until the service reaches the expected state.
 func (r *serviceResource) controlService(ctx context.Context, serviceName string, start bool) error {
 	action := "STOP"
 	expectedState := "STOPPED"
@@ -296,23 +310,31 @@ func (r *serviceResource) controlService(ctx context.Context, serviceName string
 		return err
 	}
 
-	// Poll until the service reaches the expected state
-	deadline := time.Now().Add(30 * time.Second)
-	for time.Now().Before(deadline) {
-		var results []serviceResult
-		err = r.client.Call(ctx, "service.query", []any{
-			[][]any{{"service", "=", serviceName}},
-		}, &results)
-		if err != nil {
-			return fmt.Errorf("polling service state: %w", err)
-		}
-		if len(results) > 0 && results[0].State == expectedState {
-			return nil
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
+	// Poll until the service reaches the expected state or context is cancelled
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+	timeout := time.NewTimer(30 * time.Second)
+	defer timeout.Stop()
 
-	return fmt.Errorf("timed out waiting for service %q to reach state %s", serviceName, expectedState)
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timeout.C:
+			return fmt.Errorf("timed out waiting for service %q to reach state %s", serviceName, expectedState)
+		case <-ticker.C:
+			var results []serviceResult
+			err = r.client.Call(ctx, "service.query", []any{
+				[][]any{{"service", "=", serviceName}},
+			}, &results)
+			if err != nil {
+				return fmt.Errorf("polling service state: %w", err)
+			}
+			if len(results) > 0 && results[0].State == expectedState {
+				return nil
+			}
+		}
+	}
 }
 
 func populateServiceState(ctx context.Context, model *serviceResourceModel, result *serviceResult, diags *diag.Diagnostics) {
