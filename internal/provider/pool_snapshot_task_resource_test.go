@@ -215,7 +215,8 @@ resource "truenas_pool_dataset" "snap_test" {
 }
 
 resource "truenas_pool_dataset" "snap_test_child" {
-  name = "tank/snap-test/child"
+  name       = "tank/snap-test/child"
+  depends_on = [truenas_pool_dataset.snap_test]
 }
 
 resource "truenas_pool_snapshot_task" "test" {
