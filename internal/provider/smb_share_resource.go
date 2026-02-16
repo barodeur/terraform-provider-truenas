@@ -32,18 +32,18 @@ type smbShareResource struct {
 }
 
 type smbShareResourceModel struct {
-	ID                        types.Int64  `tfsdk:"id"`
-	Name                      types.String `tfsdk:"name"`
-	Path                      types.String `tfsdk:"path"`
-	Comment                   types.String `tfsdk:"comment"`
-	Enabled                   types.Bool   `tfsdk:"enabled"`
-	Purpose                   types.String `tfsdk:"purpose"`
-	Readonly                  types.Bool   `tfsdk:"readonly"`
-	Browsable                 types.Bool   `tfsdk:"browsable"`
-	AccessBasedShareEnum      types.Bool   `tfsdk:"access_based_share_enumeration"`
-	Hostsallow                types.List   `tfsdk:"hostsallow"`
-	Hostsdeny                 types.List   `tfsdk:"hostsdeny"`
-	Locked                    types.Bool   `tfsdk:"locked"`
+	ID                   types.Int64  `tfsdk:"id"`
+	Name                 types.String `tfsdk:"name"`
+	Path                 types.String `tfsdk:"path"`
+	Comment              types.String `tfsdk:"comment"`
+	Enabled              types.Bool   `tfsdk:"enabled"`
+	Purpose              types.String `tfsdk:"purpose"`
+	Readonly             types.Bool   `tfsdk:"readonly"`
+	Browsable            types.Bool   `tfsdk:"browsable"`
+	AccessBasedShareEnum types.Bool   `tfsdk:"access_based_share_enumeration"`
+	Hostsallow           types.List   `tfsdk:"hostsallow"`
+	Hostsdeny            types.List   `tfsdk:"hostsdeny"`
+	Locked               types.Bool   `tfsdk:"locked"`
 }
 
 type smbShareResultOptions struct {
@@ -53,17 +53,17 @@ type smbShareResultOptions struct {
 }
 
 type smbShareResult struct {
-	ID                        int64                 `json:"id"`
-	Name                      string                `json:"name"`
-	Path                      string                `json:"path"`
-	Comment                   string                `json:"comment"`
-	Enabled                   bool                  `json:"enabled"`
-	Purpose                   string                `json:"purpose"`
-	Readonly                  bool                  `json:"readonly"`
-	Browsable                 bool                  `json:"browsable"`
-	AccessBasedShareEnum      bool                  `json:"access_based_share_enumeration"`
-	Locked                    bool                  `json:"locked"`
-	Options                   smbShareResultOptions `json:"options"`
+	ID                   int64                 `json:"id"`
+	Name                 string                `json:"name"`
+	Path                 string                `json:"path"`
+	Comment              string                `json:"comment"`
+	Enabled              bool                  `json:"enabled"`
+	Purpose              string                `json:"purpose"`
+	Readonly             bool                  `json:"readonly"`
+	Browsable            bool                  `json:"browsable"`
+	AccessBasedShareEnum bool                  `json:"access_based_share_enumeration"`
+	Locked               bool                  `json:"locked"`
+	Options              smbShareResultOptions `json:"options"`
 }
 
 func NewSMBShareResource() resource.Resource {

@@ -139,6 +139,7 @@ func (p *truenasProvider) Resources(_ context.Context) []func() resource.Resourc
 		NewCronjobResource,
 		NewPoolDatasetResource,
 		NewGroupResource,
+		NewPrivilegeResource,
 		NewUserResource,
 		NewSMBShareResource,
 		NewNFSShareResource,
