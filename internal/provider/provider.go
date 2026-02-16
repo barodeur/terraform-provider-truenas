@@ -144,6 +144,7 @@ func (p *truenasProvider) Resources(_ context.Context) []func() resource.Resourc
 		NewSMBShareResource,
 		NewNFSShareResource,
 		NewPoolSnapshotTaskResource,
+		NewServiceResource,
 	}
 }
 
