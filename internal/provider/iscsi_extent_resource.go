@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -50,23 +51,23 @@ type iscsiExtentResourceModel struct {
 }
 
 type iscsiExtentResult struct {
-	ID             int64  `json:"id"`
-	Name           string `json:"name"`
-	Type           string `json:"type"`
-	Disk           string `json:"disk"`
-	Path           string `json:"path"`
-	Serial         string `json:"serial"`
-	Filesize       int64  `json:"filesize"`
-	Blocksize      int64  `json:"blocksize"`
-	Pblocksize     bool   `json:"pblocksize"`
-	AvailThreshold *int64 `json:"avail_threshold"`
-	Comment        string `json:"comment"`
-	InsecureTPC    bool   `json:"insecure_tpc"`
-	Xen            bool   `json:"xen"`
-	RPM            string `json:"rpm"`
-	RO             bool   `json:"ro"`
-	Enabled        bool   `json:"enabled"`
-	NAA            string `json:"naa"`
+	ID             int64       `json:"id"`
+	Name           string      `json:"name"`
+	Type           string      `json:"type"`
+	Disk           string      `json:"disk"`
+	Path           string      `json:"path"`
+	Serial         string      `json:"serial"`
+	Filesize       json.Number `json:"filesize"`
+	Blocksize      int64       `json:"blocksize"`
+	Pblocksize     bool        `json:"pblocksize"`
+	AvailThreshold *int64      `json:"avail_threshold"`
+	Comment        string      `json:"comment"`
+	InsecureTPC    bool        `json:"insecure_tpc"`
+	Xen            bool        `json:"xen"`
+	RPM            string      `json:"rpm"`
+	RO             bool        `json:"ro"`
+	Enabled        bool        `json:"enabled"`
+	NAA            string      `json:"naa"`
 }
 
 func NewISCSIExtentResource() resource.Resource {
@@ -436,8 +437,8 @@ func populateISCSIExtentState(model *iscsiExtentResourceModel, result *iscsiExte
 		model.Comment = types.StringNull()
 	}
 
-	if result.Filesize != 0 {
-		model.Filesize = types.Int64Value(result.Filesize)
+	if fs, err := result.Filesize.Int64(); err == nil && fs != 0 {
+		model.Filesize = types.Int64Value(fs)
 	} else {
 		model.Filesize = types.Int64Null()
 	}

@@ -26,9 +26,7 @@ func TestAccISCSIPortalDataSource_basic(t *testing.T) {
 func testAccISCSIPortalDataSourceConfig() string {
 	return testAccProviderConfig() + `
 resource "truenas_iscsi_portal" "test" {
-  listen {
-    ip = "0.0.0.0"
-  }
+  listen = [{ ip = "0.0.0.0" }]
 }
 
 data "truenas_iscsi_portal" "test" {

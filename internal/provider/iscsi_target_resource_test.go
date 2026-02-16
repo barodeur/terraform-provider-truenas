@@ -52,16 +52,14 @@ func TestAccISCSITargetResource_update(t *testing.T) {
 func testAccISCSITargetResourceConfig() string {
 	return testAccProviderConfig() + `
 resource "truenas_iscsi_portal" "test_target" {
-  listen {
-    ip = "0.0.0.0"
-  }
+  listen = [{ ip = "0.0.0.0" }]
 }
 
 resource "truenas_iscsi_target" "test" {
-  name = "tf-acc-test-target"
-  groups {
+  name   = "tf-acc-test-target"
+  groups = [{
     portal = truenas_iscsi_portal.test_target.id
-  }
+  }]
 }
 `
 }
@@ -69,17 +67,15 @@ resource "truenas_iscsi_target" "test" {
 func testAccISCSITargetResourceConfigUpdated() string {
 	return testAccProviderConfig() + `
 resource "truenas_iscsi_portal" "test_target" {
-  listen {
-    ip = "0.0.0.0"
-  }
+  listen = [{ ip = "0.0.0.0" }]
 }
 
 resource "truenas_iscsi_target" "test" {
   name  = "tf-acc-test-target"
   alias = "updated alias"
-  groups {
+  groups = [{
     portal = truenas_iscsi_portal.test_target.id
-  }
+  }]
 }
 `
 }

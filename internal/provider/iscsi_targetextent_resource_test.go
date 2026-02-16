@@ -41,16 +41,14 @@ func TestAccISCSITargetextentResource_basic(t *testing.T) {
 func testAccISCSITargetextentResourceConfig(pool string) string {
 	return testAccProviderConfig() + fmt.Sprintf(`
 resource "truenas_iscsi_portal" "test_te" {
-  listen {
-    ip = "0.0.0.0"
-  }
+  listen = [{ ip = "0.0.0.0" }]
 }
 
 resource "truenas_iscsi_target" "test_te" {
-  name = "tf-acc-test-te-target"
-  groups {
+  name   = "tf-acc-test-te-target"
+  groups = [{
     portal = truenas_iscsi_portal.test_te.id
-  }
+  }]
 }
 
 resource "truenas_iscsi_extent" "test_te" {

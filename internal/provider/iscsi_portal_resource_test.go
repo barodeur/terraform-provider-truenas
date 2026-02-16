@@ -53,9 +53,7 @@ func TestAccISCSIPortalResource_update(t *testing.T) {
 func testAccISCSIPortalResourceConfig() string {
 	return testAccProviderConfig() + `
 resource "truenas_iscsi_portal" "test" {
-  listen {
-    ip = "0.0.0.0"
-  }
+  listen = [{ ip = "0.0.0.0" }]
 }
 `
 }
@@ -63,9 +61,7 @@ resource "truenas_iscsi_portal" "test" {
 func testAccISCSIPortalResourceConfigWithComment() string {
 	return testAccProviderConfig() + `
 resource "truenas_iscsi_portal" "test" {
-  listen {
-    ip = "0.0.0.0"
-  }
+  listen  = [{ ip = "0.0.0.0" }]
   comment = "test portal"
 }
 `
@@ -74,9 +70,7 @@ resource "truenas_iscsi_portal" "test" {
 func testAccISCSIPortalResourceConfigUpdated() string {
 	return testAccProviderConfig() + `
 resource "truenas_iscsi_portal" "test" {
-  listen {
-    ip = "0.0.0.0"
-  }
+  listen  = [{ ip = "0.0.0.0" }]
   comment = "updated portal"
 }
 `
