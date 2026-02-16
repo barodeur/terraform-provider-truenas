@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -153,19 +154,9 @@ func (r *serviceResource) Create(ctx context.Context, req resource.CreateRequest
 		desiredRunning := plan.Running.ValueBool()
 		currentlyRunning := svc.State == "RUNNING"
 		if desiredRunning != currentlyRunning {
-			action := "STOP"
-			if desiredRunning {
-				action = "START"
-			}
-			var jobID int64
-			err = r.client.Call(ctx, "service.control", []any{action, plan.Service.ValueString(), map[string]any{}}, &jobID)
+			err = r.controlService(ctx, plan.Service.ValueString(), desiredRunning)
 			if err != nil {
 				resp.Diagnostics.AddError("Error Controlling Service", err.Error())
-				return
-			}
-			err = r.client.Call(ctx, "core.job_wait", []any{jobID}, nil)
-			if err != nil {
-				resp.Diagnostics.AddError("Error Waiting for Service Control", err.Error())
 				return
 			}
 		}
@@ -241,19 +232,9 @@ func (r *serviceResource) Update(ctx context.Context, req resource.UpdateRequest
 		desiredRunning := plan.Running.ValueBool()
 		currentlyRunning := current.State == "RUNNING"
 		if desiredRunning != currentlyRunning {
-			action := "STOP"
-			if desiredRunning {
-				action = "START"
-			}
-			var jobID int64
-			err = r.client.Call(ctx, "service.control", []any{action, plan.Service.ValueString(), map[string]any{}}, &jobID)
+			err = r.controlService(ctx, plan.Service.ValueString(), desiredRunning)
 			if err != nil {
 				resp.Diagnostics.AddError("Error Controlling Service", err.Error())
-				return
-			}
-			err = r.client.Call(ctx, "core.job_wait", []any{jobID}, nil)
-			if err != nil {
-				resp.Diagnostics.AddError("Error Waiting for Service Control", err.Error())
 				return
 			}
 		}
@@ -297,6 +278,41 @@ func (r *serviceResource) ImportState(ctx context.Context, req resource.ImportSt
 
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), results[0].ID)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("service"), results[0].Service)...)
+}
+
+// controlService starts or stops a service and waits for the state to converge.
+// service.control is a @job method that returns asynchronously, so we poll
+// get_instance until the service reaches the expected state.
+func (r *serviceResource) controlService(ctx context.Context, serviceName string, start bool) error {
+	action := "STOP"
+	expectedState := "STOPPED"
+	if start {
+		action = "START"
+		expectedState = "RUNNING"
+	}
+
+	err := r.client.Call(ctx, "service.control", []any{action, serviceName, map[string]any{}}, nil)
+	if err != nil {
+		return err
+	}
+
+	// Poll until the service reaches the expected state
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		var results []serviceResult
+		err = r.client.Call(ctx, "service.query", []any{
+			[][]any{{"service", "=", serviceName}},
+		}, &results)
+		if err != nil {
+			return fmt.Errorf("polling service state: %w", err)
+		}
+		if len(results) > 0 && results[0].State == expectedState {
+			return nil
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	return fmt.Errorf("timed out waiting for service %q to reach state %s", serviceName, expectedState)
 }
 
 func populateServiceState(ctx context.Context, model *serviceResourceModel, result *serviceResult, diags *diag.Diagnostics) {
