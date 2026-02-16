@@ -215,27 +215,39 @@ func (r *privilegeResource) Update(ctx context.Context, req resource.UpdateReque
 		"web_shell": plan.WebShell.ValueBool(),
 	}
 
-	if !plan.LocalGroups.IsNull() && !plan.LocalGroups.IsUnknown() {
+	if !plan.LocalGroups.IsUnknown() {
 		var ids []int64
-		resp.Diagnostics.Append(plan.LocalGroups.ElementsAs(ctx, &ids, false)...)
-		if resp.Diagnostics.HasError() {
-			return
+		if plan.LocalGroups.IsNull() {
+			ids = []int64{}
+		} else {
+			resp.Diagnostics.Append(plan.LocalGroups.ElementsAs(ctx, &ids, false)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
 		}
 		params["local_groups"] = ids
 	}
-	if !plan.DSGroups.IsNull() && !plan.DSGroups.IsUnknown() {
+	if !plan.DSGroups.IsUnknown() {
 		var ids []int64
-		resp.Diagnostics.Append(plan.DSGroups.ElementsAs(ctx, &ids, false)...)
-		if resp.Diagnostics.HasError() {
-			return
+		if plan.DSGroups.IsNull() {
+			ids = []int64{}
+		} else {
+			resp.Diagnostics.Append(plan.DSGroups.ElementsAs(ctx, &ids, false)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
 		}
 		params["ds_groups"] = ids
 	}
-	if !plan.Roles.IsNull() && !plan.Roles.IsUnknown() {
+	if !plan.Roles.IsUnknown() {
 		var roles []string
-		resp.Diagnostics.Append(plan.Roles.ElementsAs(ctx, &roles, false)...)
-		if resp.Diagnostics.HasError() {
-			return
+		if plan.Roles.IsNull() {
+			roles = []string{}
+		} else {
+			resp.Diagnostics.Append(plan.Roles.ElementsAs(ctx, &roles, false)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
 		}
 		params["roles"] = roles
 	}
