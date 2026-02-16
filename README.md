@@ -41,66 +41,19 @@ variable "truenas_api_key" {
 
 ## Resources
 
-### `truenas_api_key`
-
-Manages a TrueNAS API key.
-
-```hcl
-resource "truenas_api_key" "example" {
-  name = "terraform-managed-key"
-}
-
-output "api_key_value" {
-  value     = truenas_api_key.example.key
-  sensitive = true
-}
-```
-
-#### Arguments
-
-| Argument     | Description | Required |
-|--------------|-------------|----------|
-| `name`       | The name of the API key. | Yes |
-| `username`   | The user to create the key for. Defaults to the authenticated user. | No |
-| `expires_at` | Expiration date in ISO 8601 format. If omitted, the key does not expire. | No |
-
-#### Attributes
-
-| Attribute    | Description |
-|--------------|-------------|
-| `id`         | Numeric ID of the API key. |
-| `key`        | The API key secret. Only available after creation; cannot be re-read. |
-| `created_at` | Creation timestamp. |
-| `revoked`    | Whether the key has been revoked. |
-
-> **Note:** The `key` attribute is only returned when the API key is first created. On subsequent reads, the value is preserved from Terraform state. After `terraform import`, `key` will be null.
+- `truenas_api_key` — API keys
+- `truenas_cronjob` — Cron jobs
+- `truenas_group` — Groups
+- `truenas_nfs_share` — NFS shares
+- `truenas_pool_dataset` — ZFS datasets
+- `truenas_smb_share` — SMB shares
+- `truenas_user` — Users
 
 ## Data Sources
 
-### `truenas_api_key`
-
-Looks up an existing API key by name or ID.
-
-```hcl
-data "truenas_api_key" "example" {
-  name = "terraform-managed-key"
-}
-```
-
-#### Arguments
-
-At least one of `id` or `name` must be provided.
-
-#### Attributes
-
-| Attribute    | Description |
-|--------------|-------------|
-| `id`         | Numeric ID of the API key. |
-| `name`       | Name of the API key. |
-| `username`   | Username associated with the key. |
-| `expires_at` | Expiration date, if set. |
-| `created_at` | Creation timestamp. |
-| `revoked`    | Whether the key has been revoked. |
+- `truenas_api_key` — Look up an API key
+- `truenas_cronjob` — Look up a cron job
+- `truenas_pool` — Look up a storage pool
 
 ## Development
 
