@@ -28,12 +28,12 @@ type groupResource struct {
 }
 
 type groupResourceModel struct {
-	ID              types.Int64  `tfsdk:"id"`
-	GID             types.Int64  `tfsdk:"gid"`
-	Name            types.String `tfsdk:"name"`
-	Smb             types.Bool   `tfsdk:"smb"`
-	AllowDuplicateGID types.Bool `tfsdk:"allow_duplicate_gid"`
-	Builtin         types.Bool   `tfsdk:"builtin"`
+	ID                types.Int64  `tfsdk:"id"`
+	GID               types.Int64  `tfsdk:"gid"`
+	Name              types.String `tfsdk:"name"`
+	Smb               types.Bool   `tfsdk:"smb"`
+	AllowDuplicateGID types.Bool   `tfsdk:"allow_duplicate_gid"`
+	Builtin           types.Bool   `tfsdk:"builtin"`
 }
 
 type groupResult struct {
