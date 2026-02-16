@@ -23,10 +23,11 @@ func TestAccServiceResource_basic(t *testing.T) {
 				),
 			},
 			{
-				ResourceName:      "truenas_service.test",
-				ImportState:       true,
-				ImportStateId:     "ssh",
-				ImportStateVerify: true,
+				ResourceName:            "truenas_service.test",
+				ImportState:             true,
+				ImportStateId:           "ssh",
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"pids"},
 			},
 		},
 	})

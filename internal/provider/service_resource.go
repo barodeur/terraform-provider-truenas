@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -78,6 +79,9 @@ func (r *serviceResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Description: "Desired running state. If set, Terraform will start or stop the service accordingly. If not set, the actual running state is reflected without being managed.",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"state": schema.StringAttribute{
 				Description: "The actual state of the service (\"RUNNING\" or \"STOPPED\").",
@@ -225,8 +229,17 @@ func (r *serviceResource) Update(ctx context.Context, req resource.UpdateRequest
 
 	// Control running state if user specified it
 	if !plan.Running.IsNull() && !plan.Running.IsUnknown() {
+		// Query live state to decide whether to start/stop, in case the
+		// service was changed outside Terraform since last read.
+		var current serviceResult
+		err = r.client.Call(ctx, "service.get_instance", []any{state.ID.ValueInt64()}, &current)
+		if err != nil {
+			resp.Diagnostics.AddError("Error Reading Service", err.Error())
+			return
+		}
+
 		desiredRunning := plan.Running.ValueBool()
-		currentlyRunning := state.State.ValueString() == "RUNNING"
+		currentlyRunning := current.State == "RUNNING"
 		if desiredRunning != currentlyRunning {
 			action := "STOP"
 			if desiredRunning {
