@@ -153,9 +153,15 @@ func (r *serviceResource) Create(ctx context.Context, req resource.CreateRequest
 			if desiredRunning {
 				action = "START"
 			}
-			err = r.client.Call(ctx, "service.control", []any{action, plan.Service.ValueString(), map[string]any{}}, nil)
+			var jobID int64
+			err = r.client.Call(ctx, "service.control", []any{action, plan.Service.ValueString(), map[string]any{}}, &jobID)
 			if err != nil {
 				resp.Diagnostics.AddError("Error Controlling Service", err.Error())
+				return
+			}
+			err = r.client.Call(ctx, "core.job_wait", []any{jobID}, nil)
+			if err != nil {
+				resp.Diagnostics.AddError("Error Waiting for Service Control", err.Error())
 				return
 			}
 		}
@@ -226,9 +232,15 @@ func (r *serviceResource) Update(ctx context.Context, req resource.UpdateRequest
 			if desiredRunning {
 				action = "START"
 			}
-			err = r.client.Call(ctx, "service.control", []any{action, plan.Service.ValueString(), map[string]any{}}, nil)
+			var jobID int64
+			err = r.client.Call(ctx, "service.control", []any{action, plan.Service.ValueString(), map[string]any{}}, &jobID)
 			if err != nil {
 				resp.Diagnostics.AddError("Error Controlling Service", err.Error())
+				return
+			}
+			err = r.client.Call(ctx, "core.job_wait", []any{jobID}, nil)
+			if err != nil {
+				resp.Diagnostics.AddError("Error Waiting for Service Control", err.Error())
 				return
 			}
 		}
