@@ -159,14 +159,14 @@ func (r *iscsiInitiatorResource) Update(ctx context.Context, req resource.Update
 
 	params := map[string]any{}
 
-	if !plan.Initiators.IsNull() {
+	if !plan.Initiators.IsNull() && !plan.Initiators.IsUnknown() {
 		var initiators []string
 		resp.Diagnostics.Append(plan.Initiators.ElementsAs(ctx, &initiators, false)...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
 		params["initiators"] = initiators
-	} else {
+	} else if plan.Initiators.IsNull() {
 		params["initiators"] = []string{}
 	}
 

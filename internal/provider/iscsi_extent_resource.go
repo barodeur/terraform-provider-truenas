@@ -317,20 +317,20 @@ func (r *iscsiExtentResource) Update(ctx context.Context, req resource.UpdateReq
 	if !plan.Type.IsNull() && !plan.Type.IsUnknown() {
 		params["type"] = plan.Type.ValueString()
 	}
-	if !plan.Disk.IsNull() {
+	if !plan.Disk.IsNull() && !plan.Disk.IsUnknown() {
 		params["disk"] = plan.Disk.ValueString()
-	} else {
+	} else if plan.Disk.IsNull() {
 		params["disk"] = ""
 	}
-	if !plan.Path.IsNull() {
+	if !plan.Path.IsNull() && !plan.Path.IsUnknown() {
 		params["path"] = plan.Path.ValueString()
-	} else {
+	} else if plan.Path.IsNull() {
 		params["path"] = ""
 	}
 	if !plan.Serial.IsNull() && !plan.Serial.IsUnknown() {
 		params["serial"] = plan.Serial.ValueString()
 	}
-	if !plan.Filesize.IsNull() {
+	if !plan.Filesize.IsNull() && !plan.Filesize.IsUnknown() {
 		params["filesize"] = plan.Filesize.ValueInt64()
 	}
 	if !plan.Blocksize.IsNull() && !plan.Blocksize.IsUnknown() {

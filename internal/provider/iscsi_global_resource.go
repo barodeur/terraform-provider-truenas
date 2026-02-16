@@ -182,20 +182,9 @@ func (r *iscsiGlobalResource) Update(ctx context.Context, req resource.UpdateReq
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-func (r *iscsiGlobalResource) Delete(ctx context.Context, _ resource.DeleteRequest, resp *resource.DeleteResponse) {
-	// Reset to defaults — singleton cannot be truly deleted
-	defaults := map[string]any{
-		"basename":     "iqn.2005-10.org.freenas.ctl",
-		"isns_servers": []string{},
-		"listen_port":  3260,
-		"alua":         false,
-	}
-
-	err := r.client.Call(ctx, "iscsi.global.update", []any{defaults}, nil)
-	if err != nil {
-		resp.Diagnostics.AddError("Error Resetting iSCSI Global Config", err.Error())
-		return
-	}
+func (r *iscsiGlobalResource) Delete(_ context.Context, _ resource.DeleteRequest, _ *resource.DeleteResponse) {
+	// No-op: this is a singleton resource. Removing it from Terraform state
+	// should not alter the appliance's global iSCSI configuration.
 }
 
 func (r *iscsiGlobalResource) ImportState(ctx context.Context, _ resource.ImportStateRequest, resp *resource.ImportStateResponse) {

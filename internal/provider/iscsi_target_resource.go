@@ -111,6 +111,9 @@ func (r *iscsiTargetResource) Schema(_ context.Context, _ resource.SchemaRequest
 							Description: "Authentication method: NONE, CHAP, or CHAP_MUTUAL.",
 							Optional:    true,
 							Computed:    true,
+							PlanModifiers: []planmodifier.String{
+								stringplanmodifier.UseStateForUnknown(),
+							},
 						},
 						"auth": schema.Int64Attribute{
 							Description: "Auth group tag (references iscsi_auth tag).",
@@ -216,22 +219,22 @@ func (r *iscsiTargetResource) Update(ctx context.Context, req resource.UpdateReq
 		"name": plan.Name.ValueString(),
 	}
 
-	if !plan.Alias.IsNull() {
+	if !plan.Alias.IsNull() && !plan.Alias.IsUnknown() {
 		params["alias"] = plan.Alias.ValueString()
-	} else {
+	} else if plan.Alias.IsNull() {
 		params["alias"] = ""
 	}
 	if !plan.Mode.IsNull() && !plan.Mode.IsUnknown() {
 		params["mode"] = plan.Mode.ValueString()
 	}
 
-	if !plan.Groups.IsNull() {
+	if !plan.Groups.IsNull() && !plan.Groups.IsUnknown() {
 		groups := iscsiTargetGroupsFromPlan(ctx, plan.Groups, &resp.Diagnostics)
 		if resp.Diagnostics.HasError() {
 			return
 		}
 		params["groups"] = groups
-	} else {
+	} else if plan.Groups.IsNull() {
 		params["groups"] = []map[string]any{}
 	}
 
