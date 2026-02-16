@@ -4,7 +4,7 @@ resource "truenas_group" "operators" {
 
 resource "truenas_privilege" "readonly_ops" {
   name         = "readonly-ops"
-  local_groups = [truenas_group.operators.id]
+  local_groups = [truenas_group.operators.gid]
   roles        = ["READONLY_ADMIN"]
   web_shell    = false
 }

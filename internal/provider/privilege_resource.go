@@ -85,7 +85,7 @@ func (r *privilegeResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				},
 			},
 			"local_groups": schema.ListAttribute{
-				Description: "List of local group IDs assigned to this privilege.",
+				Description: "List of local group GIDs assigned to this privilege.",
 				Optional:    true,
 				Computed:    true,
 				ElementType: types.Int64Type,
@@ -294,7 +294,7 @@ func populatePrivilegeState(ctx context.Context, model *privilegeResourceModel, 
 	if len(result.LocalGroups) > 0 {
 		elements := make([]attr.Value, len(result.LocalGroups))
 		for i, g := range result.LocalGroups {
-			elements[i] = types.Int64Value(g.ID)
+			elements[i] = types.Int64Value(g.GID)
 		}
 		list, d := types.ListValue(types.Int64Type, elements)
 		diags.Append(d...)

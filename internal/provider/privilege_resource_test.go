@@ -86,7 +86,7 @@ resource "truenas_group" "test" {
 
 resource "truenas_privilege" "test" {
   name         = "tf-acc-test-priv-groups"
-  local_groups = [truenas_group.test.id]
+  local_groups = [truenas_group.test.gid]
   roles        = ["READONLY_ADMIN"]
   web_shell    = false
 }
