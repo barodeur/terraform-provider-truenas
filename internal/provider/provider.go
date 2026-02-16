@@ -145,6 +145,13 @@ func (p *truenasProvider) Resources(_ context.Context) []func() resource.Resourc
 		NewNFSShareResource,
 		NewPoolSnapshotTaskResource,
 		NewServiceResource,
+		NewISCSIPortalResource,
+		NewISCSIInitiatorResource,
+		NewISCSIAuthResource,
+		NewISCSIExtentResource,
+		NewISCSITargetResource,
+		NewISCSITargetextentResource,
+		NewISCSIGlobalResource,
 	}
 }
 
@@ -153,5 +160,7 @@ func (p *truenasProvider) DataSources(_ context.Context) []func() datasource.Dat
 		NewAPIKeyDataSource,
 		NewCronjobDataSource,
 		NewPoolDataSource,
+		NewISCSIPortalDataSource,
+		NewISCSIGlobalDataSource,
 	}
 }
