@@ -22,4 +22,7 @@ lint:
 testacc-vm:
 	scripts/testacc.sh $(TESTARGS)
 
-.PHONY: build install test testacc fmt lint testacc-vm
+generate:
+	cd tools && go generate ./...
+
+.PHONY: build install test testacc fmt lint testacc-vm generate

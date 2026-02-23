@@ -81,7 +81,9 @@ func (r *userResource) Metadata(_ context.Context, req resource.MetadataRequest,
 
 func (r *userResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manages a TrueNAS local user.",
+		MarkdownDescription: "Manages a TrueNAS local user.\n\n" +
+			"~> **Note:** The `password` attribute is write-only and cannot be read back from TrueNAS. " +
+			"After `terraform import`, `password` will be null.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.Int64Attribute{
 				Description: "The unique identifier of the user.",

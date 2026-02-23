@@ -55,7 +55,9 @@ func (r *iscsiGlobalResource) Metadata(_ context.Context, req resource.MetadataR
 
 func (r *iscsiGlobalResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manages the TrueNAS global iSCSI configuration. This is a singleton resource.",
+		MarkdownDescription: "Manages the TrueNAS global iSCSI configuration. This is a singleton resource.\n\n" +
+			"~> **Note:** This is a singleton resource — only one instance exists per TrueNAS system. " +
+			"Destroying this resource only removes it from Terraform state without modifying the appliance configuration.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.Int64Attribute{
 				Description: "The identifier (always 1 for singleton config).",

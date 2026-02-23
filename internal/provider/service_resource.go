@@ -56,7 +56,9 @@ func (r *serviceResource) Metadata(_ context.Context, req resource.MetadataReque
 
 func (r *serviceResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manages a TrueNAS service. Services are pre-existing system entities that can be enabled/disabled and started/stopped.",
+		MarkdownDescription: "Manages a TrueNAS service. Services are pre-existing system entities that can be enabled/disabled and started/stopped.\n\n" +
+			"~> **Note:** Services are pre-existing system entities in TrueNAS. " +
+			"Destroying this resource only removes it from Terraform state — it does not delete the service itself.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.Int64Attribute{
 				Description: "The unique identifier of the service.",
