@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -15,9 +16,15 @@ import (
 )
 
 type Client struct {
-	conn   *websocket.Conn
-	mu     sync.Mutex
-	nextID int64
+	conn    *websocket.Conn
+	writeMu sync.Mutex // serializes WriteJSON only
+	nextID  atomic.Int64
+
+	pendingMu sync.Mutex
+	pending   map[int64]chan rpcResponse
+
+	done    chan struct{} // closed when readLoop exits
+	doneErr error        // fatal error from readLoop
 }
 
 type rpcRequest struct {
@@ -66,9 +73,12 @@ func NewClient(ctx context.Context, wsURL, apiKey string, insecure bool) (*Clien
 	}
 
 	c := &Client{
-		conn:   conn,
-		nextID: 1,
+		conn:    conn,
+		pending: make(map[int64]chan rpcResponse),
+		done:    make(chan struct{}),
 	}
+
+	go c.readLoop()
 
 	// Authenticate with API key (retry on rate limit)
 	const maxRetries = 5
@@ -90,10 +100,12 @@ func NewClient(ctx context.Context, wsURL, apiKey string, insecure bool) (*Clien
 	}
 	if err != nil {
 		conn.Close()
+		<-c.done
 		return nil, fmt.Errorf("authentication failed: %w", err)
 	}
 	if !loginResult {
 		conn.Close()
+		<-c.done
 		return nil, fmt.Errorf("authentication failed: login returned false")
 	}
 
@@ -102,12 +114,60 @@ func NewClient(ctx context.Context, wsURL, apiKey string, insecure bool) (*Clien
 	return c, nil
 }
 
-func (c *Client) Call(ctx context.Context, method string, params any, dest any) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+func (c *Client) readLoop() {
+	defer close(c.done)
 
-	id := c.nextID
-	c.nextID++
+	for {
+		var resp rpcResponse
+		if err := c.conn.ReadJSON(&resp); err != nil {
+			c.pendingMu.Lock()
+			c.doneErr = fmt.Errorf("WebSocket read error: %w", err)
+			for id, ch := range c.pending {
+				ch <- rpcResponse{Error: &rpcError{
+					Code:    -1,
+					Message: c.doneErr.Error(),
+				}}
+				delete(c.pending, id)
+			}
+			c.pendingMu.Unlock()
+			return
+		}
+
+		// Skip notifications (no ID)
+		if resp.ID == nil {
+			continue
+		}
+
+		c.pendingMu.Lock()
+		ch, ok := c.pending[*resp.ID]
+		c.pendingMu.Unlock()
+
+		if ok {
+			ch <- resp
+		}
+	}
+}
+
+func (c *Client) Call(ctx context.Context, method string, params any, dest any) error {
+	// Fail fast if readLoop has already exited
+	select {
+	case <-c.done:
+		return c.doneErr
+	default:
+	}
+
+	id := c.nextID.Add(1)
+
+	ch := make(chan rpcResponse, 1)
+	c.pendingMu.Lock()
+	c.pending[id] = ch
+	c.pendingMu.Unlock()
+
+	defer func() {
+		c.pendingMu.Lock()
+		delete(c.pending, id)
+		c.pendingMu.Unlock()
+	}()
 
 	req := rpcRequest{
 		JSONRPC: "2.0",
@@ -121,47 +181,33 @@ func (c *Client) Call(ctx context.Context, method string, params any, dest any) 
 		"id":     id,
 	})
 
-	if err := c.conn.WriteJSON(req); err != nil {
-		return fmt.Errorf("failed to send JSON-RPC request for %s: %w", method, err)
+	c.writeMu.Lock()
+	writeErr := c.conn.WriteJSON(req)
+	c.writeMu.Unlock()
+	if writeErr != nil {
+		return fmt.Errorf("failed to send JSON-RPC request for %s: %w", method, writeErr)
 	}
 
-	for {
-		var resp rpcResponse
-		if err := c.conn.ReadJSON(&resp); err != nil {
-			return fmt.Errorf("failed to read JSON-RPC response for %s: %w", method, err)
-		}
-
-		// Skip notification messages (no id field)
-		if resp.ID == nil {
-			tflog.Trace(ctx, "Skipping WebSocket notification", map[string]any{
-				"method": method,
-			})
-			continue
-		}
-
-		// Skip responses with non-matching IDs
-		if *resp.ID != id {
-			tflog.Trace(ctx, "Skipping response with non-matching ID", map[string]any{
-				"expected_id": id,
-				"received_id": *resp.ID,
-			})
-			continue
-		}
-
+	select {
+	case resp := <-ch:
 		if resp.Error != nil {
 			return resp.Error
 		}
-
 		if dest != nil {
 			if err := json.Unmarshal(resp.Result, dest); err != nil {
 				return fmt.Errorf("failed to unmarshal result for %s: %w", method, err)
 			}
 		}
-
 		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("call to %s cancelled: %w", method, ctx.Err())
+	case <-c.done:
+		return c.doneErr
 	}
 }
 
 func (c *Client) Close() error {
-	return c.conn.Close()
+	err := c.conn.Close()
+	<-c.done
+	return err
 }
