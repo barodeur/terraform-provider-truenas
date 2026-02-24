@@ -30,6 +30,7 @@
           ];
 
           shellHook = ''
+            export GOROOT="${pkgs.go_1_24}/share/go"
             echo "terraform-provider-truenas dev shell"
           '';
         };
