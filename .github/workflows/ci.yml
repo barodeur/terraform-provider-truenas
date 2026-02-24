@@ -19,3 +19,19 @@ jobs:
       - run: go build ./...
       - run: go vet ./...
       - run: go test ./... -v
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: make generate
+      - name: Verify docs are up to date
+        run: |
+          if [ -n "$(git diff --name-only)" ]; then
+            echo "Documentation is out of date. Run 'make generate' and commit the changes."
+            git diff --name-only
+            exit 1
+          fi
