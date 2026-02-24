@@ -122,7 +122,10 @@ func (r *poolDatasetResource) Metadata(_ context.Context, req resource.MetadataR
 
 func (r *poolDatasetResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manages a TrueNAS ZFS dataset (filesystem type).",
+		MarkdownDescription: "Manages a TrueNAS ZFS dataset (filesystem type).\n\n" +
+			"~> **Note:** Only ZFS properties with a LOCAL source are stored in state. " +
+			"Properties that are inherited from a parent dataset or set to the ZFS default appear as null. " +
+			"Setting an attribute to null causes it to revert to its inherited or default value.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "The unique identifier of the dataset (same as name).",

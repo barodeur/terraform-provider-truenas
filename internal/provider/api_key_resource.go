@@ -101,7 +101,9 @@ func (r *apiKeyResource) Metadata(_ context.Context, req resource.MetadataReques
 
 func (r *apiKeyResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manages a TrueNAS API key.",
+		MarkdownDescription: "Manages a TrueNAS API key.\n\n" +
+			"~> **Important:** The `key` attribute is only returned when the API key is first created. " +
+			"On subsequent reads, the value is preserved from Terraform state. After `terraform import`, `key` will be null.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.Int64Attribute{
 				Description: "The unique identifier of the API key.",

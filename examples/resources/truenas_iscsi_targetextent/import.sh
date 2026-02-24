@@ -1,0 +1,1 @@
+terraform import truenas_iscsi_targetextent.example 1

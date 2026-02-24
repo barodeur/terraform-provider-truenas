@@ -1,0 +1,1 @@
+terraform import truenas_pool_snapshot_task.example 1

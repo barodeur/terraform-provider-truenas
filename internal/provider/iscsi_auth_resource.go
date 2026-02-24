@@ -57,7 +57,9 @@ func (r *iscsiAuthResource) Metadata(_ context.Context, req resource.MetadataReq
 
 func (r *iscsiAuthResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manages TrueNAS iSCSI CHAP authentication credentials.",
+		MarkdownDescription: "Manages TrueNAS iSCSI CHAP authentication credentials.\n\n" +
+			"~> **Note:** The `secret` and `peersecret` attributes are masked by the TrueNAS API on read. " +
+			"Their values are preserved from prior Terraform state.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.Int64Attribute{
 				Description: "The unique identifier of the auth entry.",
