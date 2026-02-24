@@ -122,14 +122,20 @@ func (c *Client) readLoop() {
 		if err := c.conn.ReadJSON(&resp); err != nil {
 			c.pendingMu.Lock()
 			c.doneErr = fmt.Errorf("WebSocket read error: %w", err)
+			pendingChans := make([]chan rpcResponse, 0, len(c.pending))
 			for id, ch := range c.pending {
-				ch <- rpcResponse{Error: &rpcError{
-					Code:    -1,
-					Message: c.doneErr.Error(),
-				}}
+				pendingChans = append(pendingChans, ch)
 				delete(c.pending, id)
 			}
 			c.pendingMu.Unlock()
+
+			errResp := rpcResponse{Error: &rpcError{
+				Code:    -1,
+				Message: c.doneErr.Error(),
+			}}
+			for _, ch := range pendingChans {
+				ch <- errResp
+			}
 			return
 		}
 
@@ -140,6 +146,9 @@ func (c *Client) readLoop() {
 
 		c.pendingMu.Lock()
 		ch, ok := c.pending[*resp.ID]
+		if ok {
+			delete(c.pending, *resp.ID)
+		}
 		c.pendingMu.Unlock()
 
 		if ok {
