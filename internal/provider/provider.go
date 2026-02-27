@@ -152,6 +152,13 @@ func (p *truenasProvider) Resources(_ context.Context) []func() resource.Resourc
 		NewISCSITargetResource,
 		NewISCSITargetextentResource,
 		NewISCSIGlobalResource,
+		NewNVMeTGlobalResource,
+		NewNVMeTHostResource,
+		NewNVMeTSubsysResource,
+		NewNVMeTNamespaceResource,
+		NewNVMeTPortResource,
+		NewNVMeTHostSubsysResource,
+		NewNVMeTPortSubsysResource,
 	}
 }
 
@@ -162,5 +169,6 @@ func (p *truenasProvider) DataSources(_ context.Context) []func() datasource.Dat
 		NewPoolDataSource,
 		NewISCSIPortalDataSource,
 		NewISCSIGlobalDataSource,
+		NewNVMeTGlobalDataSource,
 	}
 }
