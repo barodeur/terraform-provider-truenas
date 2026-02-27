@@ -88,6 +88,9 @@ func (r *nvmetNamespaceResource) Schema(_ context.Context, _ resource.SchemaRequ
 			"subsys_id": schema.Int64Attribute{
 				Description: "The parent subsystem ID.",
 				Required:    true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.RequiresReplace(),
+				},
 			},
 			"device_type": schema.StringAttribute{
 				Description: "Device type (ZVOL or FILE).",

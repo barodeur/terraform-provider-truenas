@@ -183,10 +183,10 @@ func (r *nvmetHostResource) Update(ctx context.Context, req resource.UpdateReque
 		"hostnqn": plan.HostNQN.ValueString(),
 	}
 
-	if !plan.DHCHAPKey.IsNull() {
+	if !plan.DHCHAPKey.IsNull() && !plan.DHCHAPKey.IsUnknown() {
 		params["dhchap_key"] = plan.DHCHAPKey.ValueString()
 	}
-	if !plan.DHCHAPCtrlKey.IsNull() {
+	if !plan.DHCHAPCtrlKey.IsNull() && !plan.DHCHAPCtrlKey.IsUnknown() {
 		params["dhchap_ctrl_key"] = plan.DHCHAPCtrlKey.ValueString()
 	}
 	if !plan.DHCHAPDHGroup.IsNull() {
