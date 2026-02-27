@@ -17,7 +17,7 @@ import (
 
 type Client struct {
 	conn    *websocket.Conn
-	writeMu sync.Mutex // serializes WriteJSON only
+	writeCh chan writeRequest
 	nextID  atomic.Int64
 
 	pendingMu sync.Mutex
@@ -25,6 +25,12 @@ type Client struct {
 
 	done    chan struct{} // closed when readLoop exits
 	doneErr error        // fatal error from readLoop
+	wg      sync.WaitGroup
+}
+
+type writeRequest struct {
+	req  rpcRequest
+	errc chan error // buffered(1), receives WriteJSON result
 }
 
 type rpcRequest struct {
@@ -74,11 +80,14 @@ func NewClient(ctx context.Context, wsURL, apiKey string, insecure bool) (*Clien
 
 	c := &Client{
 		conn:    conn,
+		writeCh: make(chan writeRequest),
 		pending: make(map[int64]chan rpcResponse),
 		done:    make(chan struct{}),
 	}
 
+	c.wg.Add(2)
 	go c.readLoop()
+	go c.writeLoop()
 
 	// Authenticate with API key (retry on rate limit)
 	const maxRetries = 5
@@ -100,12 +109,12 @@ func NewClient(ctx context.Context, wsURL, apiKey string, insecure bool) (*Clien
 	}
 	if err != nil {
 		conn.Close()
-		<-c.done
+		c.wg.Wait()
 		return nil, fmt.Errorf("authentication failed: %w", err)
 	}
 	if !loginResult {
 		conn.Close()
-		<-c.done
+		c.wg.Wait()
 		return nil, fmt.Errorf("authentication failed: login returned false")
 	}
 
@@ -114,7 +123,20 @@ func NewClient(ctx context.Context, wsURL, apiKey string, insecure bool) (*Clien
 	return c, nil
 }
 
+func (c *Client) writeLoop() {
+	defer c.wg.Done()
+	for {
+		select {
+		case wr := <-c.writeCh:
+			wr.errc <- c.conn.WriteJSON(wr.req)
+		case <-c.done:
+			return
+		}
+	}
+}
+
 func (c *Client) readLoop() {
+	defer c.wg.Done()
 	defer close(c.done)
 
 	for {
@@ -190,11 +212,24 @@ func (c *Client) Call(ctx context.Context, method string, params any, dest any) 
 		"id":     id,
 	})
 
-	c.writeMu.Lock()
-	writeErr := c.conn.WriteJSON(req)
-	c.writeMu.Unlock()
-	if writeErr != nil {
-		return fmt.Errorf("failed to send JSON-RPC request for %s: %w", method, writeErr)
+	errc := make(chan error, 1)
+	select {
+	case c.writeCh <- writeRequest{req: req, errc: errc}:
+	case <-c.done:
+		return c.doneErr
+	case <-ctx.Done():
+		return fmt.Errorf("call to %s cancelled: %w", method, ctx.Err())
+	}
+
+	select {
+	case writeErr := <-errc:
+		if writeErr != nil {
+			return fmt.Errorf("failed to send JSON-RPC request for %s: %w", method, writeErr)
+		}
+	case <-c.done:
+		return c.doneErr
+	case <-ctx.Done():
+		return fmt.Errorf("call to %s cancelled: %w", method, ctx.Err())
 	}
 
 	select {
@@ -217,6 +252,6 @@ func (c *Client) Call(ctx context.Context, method string, params any, dest any) 
 
 func (c *Client) Close() error {
 	err := c.conn.Close()
-	<-c.done
+	c.wg.Wait()
 	return err
 }
