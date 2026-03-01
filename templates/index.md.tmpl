@@ -1,0 +1,19 @@
+---
+page_title: "truenas Provider"
+description: |-
+  Interact with TrueNAS Scale via its WebSocket API.
+---
+
+# truenas Provider
+
+Interact with TrueNAS Scale via its WebSocket API.
+
+## Example Usage
+
+{{ tffile "examples/provider/provider.tf" }}
+
+### Create a dataset and share it over NFS
+
+{{ tffile "examples/provider/example_nfs.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}
