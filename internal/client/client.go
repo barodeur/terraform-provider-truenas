@@ -24,7 +24,7 @@ type Client struct {
 	pending   map[int64]chan rpcResponse
 
 	done    chan struct{} // closed when readLoop exits
-	doneErr error        // fatal error from readLoop
+	doneErr error         // fatal error from readLoop
 }
 
 type rpcRequest struct {
@@ -212,6 +212,87 @@ func (c *Client) Call(ctx context.Context, method string, params any, dest any) 
 		return fmt.Errorf("call to %s cancelled: %w", method, ctx.Err())
 	case <-c.done:
 		return c.doneErr
+	}
+}
+
+// jobStatus represents a TrueNAS async job returned by core.get_jobs.
+type jobStatus struct {
+	ID    int64  `json:"id"`
+	State string `json:"state"`
+	// Progress is informational only; not used by the client.
+	Result json.RawMessage `json:"result"`
+	Error  string          `json:"error"`
+}
+
+// jobPollInterval controls how often CallJob polls core.get_jobs.
+var jobPollInterval = 2 * time.Second
+
+// CallJob calls a TrueNAS method that returns a job ID, then polls
+// core.get_jobs until the job reaches a terminal state (SUCCESS, FAILED,
+// or ABORTED). On success the job result is unmarshalled into dest.
+func (c *Client) CallJob(ctx context.Context, method string, params any, dest any) error {
+	var jobID int64
+	if err := c.Call(ctx, method, params, &jobID); err != nil {
+		return err
+	}
+
+	tflog.Debug(ctx, "Job started, polling for completion", map[string]any{
+		"method": method,
+		"job_id": jobID,
+	})
+
+	ticker := time.NewTicker(jobPollInterval)
+	defer ticker.Stop()
+
+	for {
+		var jobs []jobStatus
+		if err := c.Call(ctx, "core.get_jobs", []any{[]any{[]any{"id", "=", jobID}}}, &jobs); err != nil {
+			return fmt.Errorf("polling job %d for %s: %w", jobID, method, err)
+		}
+
+		if len(jobs) == 0 {
+			return fmt.Errorf("job %d not found for %s", jobID, method)
+		}
+
+		job := jobs[0]
+
+		switch job.State {
+		case "SUCCESS":
+			tflog.Debug(ctx, "Job completed successfully", map[string]any{
+				"method": method,
+				"job_id": jobID,
+			})
+			if dest != nil {
+				if err := json.Unmarshal(job.Result, dest); err != nil {
+					return fmt.Errorf("failed to unmarshal job result for %s: %w", method, err)
+				}
+			}
+			return nil
+
+		case "FAILED":
+			errMsg := job.Error
+			if errMsg == "" {
+				errMsg = "unknown error"
+			}
+			return fmt.Errorf("job %d for %s failed: %s", jobID, method, errMsg)
+
+		case "ABORTED":
+			return fmt.Errorf("job %d for %s was aborted", jobID, method)
+
+		case "WAITING", "RUNNING":
+			// Continue polling
+		default:
+			return fmt.Errorf("job %d for %s has unexpected state: %s", jobID, method, job.State)
+		}
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("call to %s cancelled while waiting for job %d: %w", method, jobID, ctx.Err())
+		case <-c.done:
+			return c.doneErr
+		case <-ticker.C:
+			// Poll again
+		}
 	}
 }
 
